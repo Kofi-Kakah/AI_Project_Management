@@ -3,7 +3,7 @@ import express from "express";
 import { prisma } from "./libs/prisma";
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 4000;
 
 app.get("/health", async (req, res) => {
     try {
