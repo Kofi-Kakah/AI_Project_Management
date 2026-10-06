@@ -9,6 +9,7 @@ import { errorHandler } from "./middleware/errorHandler";
 import { authRateLimit } from "./middleware/rateLimit";
 import { requestLogger } from "./middleware/requestLogger";
 import { authRouter } from "./modules/auth/auth.routes";
+import { organizationsRouter } from "./modules/organizations/organizations.routes";
 
 export const app = express();
 
@@ -39,4 +40,5 @@ app.get("/health", async (_req, res) => {
 });
 
 app.use("/auth", authRateLimit, authRouter);
+app.use("/organizations", organizationsRouter);
 app.use(errorHandler);
