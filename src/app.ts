@@ -7,6 +7,7 @@ import { prisma } from "./config/db";
 import { redis } from "./config/redis";
 import { errorHandler } from "./middleware/errorHandler";
 import { authRateLimit } from "./middleware/rateLimit";
+import { requestLogger } from "./middleware/requestLogger";
 import { authRouter } from "./modules/auth/auth.routes";
 
 export const app = express();
@@ -16,6 +17,7 @@ app.use(cors({
   origin: env.CORS_ORIGIN.split(",").map((origin) => origin.trim()),
   credentials: true,
 }));
+app.use(requestLogger);
 app.use(express.json({ limit: "32kb" }));
 app.use(cookieParser());
 

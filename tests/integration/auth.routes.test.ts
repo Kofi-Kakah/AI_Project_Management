@@ -7,10 +7,12 @@ vi.stubEnv("JWT_ACCESS_TOKEN_SECRET", "test-secret-that-is-long-enough-for-jwt")
 vi.stubEnv("GOOGLE_CLIENT_ID", "");
 vi.stubEnv("GOOGLE_CLIENT_SECRET", "");
 
+const { errorHandler } = await import("../../src/middleware/errorHandler");
 const { authRouter } = await import("../../src/modules/auth/auth.routes");
 const app = express();
 app.use(express.json());
 app.use("/auth", authRouter);
+app.use(errorHandler);
 
 describe("auth routes", () => {
   it("rejects invalid registration input", async () => {
@@ -18,6 +20,7 @@ describe("auth routes", () => {
 
     expect(response.status).toBe(400);
     expect(response.body.error).toBeTruthy();
+    expect(response.body.code).toBe("VALIDATION_ERROR");
   });
 
   it("rejects invalid login input", async () => {

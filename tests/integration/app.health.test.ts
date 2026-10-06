@@ -14,6 +14,9 @@ vi.mock("../../src/config/redis", () => ({
   redis: { ping: pingRedis, call: callRedis },
 }));
 
+callRedis.mockImplementation((command: string) =>
+  Promise.resolve(command === "SCRIPT" ? "test-script-sha" : [0, 60_000]),
+);
 vi.stubEnv("DATABASE_URL", "postgresql://test:test@localhost:5432/test");
 vi.stubEnv("JWT_ACCESS_TOKEN_SECRET", "test-secret-that-is-long-enough-for-jwt");
 vi.stubEnv("GOOGLE_CLIENT_ID", "");
