@@ -1,11 +1,13 @@
 import { Router } from "express";
 import { requireAuth } from "../../middleware/auth";
 import { requireOrganizationRole } from "../../middleware/rbac";
+import { requirePlanCapacity } from "../../middleware/planLimits";
 import {
   cacheOrganizationResponses,
   invalidateOrganizationResponses,
 } from "../../middleware/responseCache";
 import { validate } from "../../middleware/validate";
+import { UsageMetric } from "../../../generated/prisma/enums";
 import { create, get, list, remove, update } from "./tasks.controller";
 import {
   createTaskSchema,
@@ -27,6 +29,7 @@ projectTasksRouter.get("/", validate(listTasksQuerySchema, "query"), list);
 projectTasksRouter.post(
   "/",
   validate(projectTaskParamsSchema, "params"),
+  requirePlanCapacity(UsageMetric.TASK),
   validate(createTaskSchema),
   create,
 );

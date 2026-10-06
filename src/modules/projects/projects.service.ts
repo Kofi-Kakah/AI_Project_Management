@@ -1,4 +1,5 @@
 import { prisma } from "../../config/db";
+import { UsageMetric } from "../../../generated/prisma/enums";
 import {
   emitOrganizationEvent,
   REALTIME_SERVER_EVENTS,
@@ -6,6 +7,7 @@ import {
 import { AppError } from "../../utils/AppError";
 import type { Pagination } from "../../utils/pagination";
 import * as activity from "../activity/activity.service";
+import { recordMonthlyUsage } from "../billing/billing.usage";
 
 type ProjectInput = {
   name?: string;
@@ -106,6 +108,12 @@ export async function createProject(
       entityType: "project",
       entityId: project.id,
       metadata: { name: project.name },
+    });
+    await recordMonthlyUsage(tx, {
+      organizationId,
+      metric: UsageMetric.PROJECT,
+      entityId: project.id,
+      source: "project.create",
     });
     return project;
   });

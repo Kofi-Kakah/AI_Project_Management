@@ -8,6 +8,11 @@ import { redis } from "./config/redis";
 import { errorHandler } from "./middleware/errorHandler";
 import { apiRateLimit, authRateLimit } from "./middleware/rateLimit";
 import { requestLogger } from "./middleware/requestLogger";
+import {
+  billingRouter,
+  organizationBillingRouter,
+} from "./modules/billing/billing.routes";
+import { stripeWebhook } from "./modules/billing/billing.controller";
 import { authRouter } from "./modules/auth/auth.routes";
 import {
   commentsRouter,
@@ -29,6 +34,11 @@ app.use(
 );
 app.use(requestLogger);
 app.use(apiRateLimit);
+app.post(
+  "/billing/webhook",
+  express.raw({ type: "application/json", limit: "1mb" }),
+  stripeWebhook,
+);
 app.use(express.json({ limit: "32kb" }));
 app.use(cookieParser());
 
@@ -53,7 +63,9 @@ app.get("/health", async (_req, res) => {
 });
 
 app.use("/auth", authRateLimit, authRouter);
+app.use("/billing", billingRouter);
 app.use("/organizations", organizationsRouter);
+app.use("/organizations/:organizationId/billing", organizationBillingRouter);
 app.use("/organizations/:organizationId/teams", teamsRouter);
 app.use("/organizations/:organizationId/projects", projectsRouter);
 app.use(

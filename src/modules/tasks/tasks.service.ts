@@ -2,6 +2,7 @@ import {
   MembershipStatus,
   NotificationType,
   TaskStatus,
+  UsageMetric,
   type TaskPriority as TaskPriorityType,
   type TaskStatus as TaskStatusType,
 } from "../../../generated/prisma/enums";
@@ -15,6 +16,7 @@ import {
 import { AppError } from "../../utils/AppError";
 import type { Pagination } from "../../utils/pagination";
 import * as activity from "../activity/activity.service";
+import { recordMonthlyUsage } from "../billing/billing.usage";
 
 type TaskInput = {
   title?: string;
@@ -236,6 +238,12 @@ export async function createTask(
       entityType: "task",
       entityId: task.id,
       metadata: { title: task.title, projectId },
+    });
+    await recordMonthlyUsage(tx, {
+      organizationId,
+      metric: UsageMetric.TASK,
+      entityId: task.id,
+      source: "task.create",
     });
     return task;
   });

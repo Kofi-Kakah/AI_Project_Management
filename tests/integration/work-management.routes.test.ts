@@ -28,6 +28,11 @@ const { delegates, emitOrganizationEvent, emitProjectEvent } = vi.hoisted(
         task: model(),
         comment: model(),
         activityLog: model(),
+        subscription: model(),
+        usageRecord: {
+          ...model(),
+          aggregate: vi.fn(),
+        },
       },
       emitOrganizationEvent: vi.fn(),
       emitProjectEvent: vi.fn(),
@@ -127,6 +132,18 @@ describe("teams, projects, tasks, and comments routes", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     delegates.membership.findUnique.mockReset();
+    delegates.subscription.findUnique.mockReset();
+    delegates.subscription.findUnique.mockResolvedValue(null);
+    delegates.usageRecord.aggregate.mockReset();
+    delegates.usageRecord.aggregate.mockResolvedValue({
+      _sum: { quantity: 0 },
+    });
+    delegates.usageRecord.create.mockReset();
+    delegates.usageRecord.create.mockResolvedValue({});
+    delegates.project.count.mockReset();
+    delegates.project.count.mockResolvedValue(0);
+    delegates.task.count.mockReset();
+    delegates.task.count.mockResolvedValue(0);
     delegates.membership.findUnique.mockResolvedValue({
       organizationId: "org-a",
       userId: "owner-a",
@@ -265,6 +282,55 @@ describe("teams, projects, tasks, and comments routes", () => {
         }),
       }),
     );
+    expect(delegates.usageRecord.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          organizationId: "org-a",
+          metric: "PROJECT",
+          source: "project.create",
+          idempotencyKey: "project:project-a",
+        }),
+      }),
+    );
+  });
+
+  it("blocks project creation when the monthly free-plan quota is exhausted", async () => {
+    delegates.subscription.findUnique.mockResolvedValue({
+      plan: "FREE",
+      status: "ACTIVE",
+    });
+    delegates.usageRecord.aggregate.mockResolvedValue({
+      _sum: { quantity: 3 },
+    });
+
+    const response = await request(app)
+      .post("/organizations/org-a/projects")
+      .set("Authorization", "******")
+      .send({ name: "Over quota" });
+
+    expect(response.status).toBe(402);
+    expect(response.body.code).toBe("PLAN_LIMIT_EXCEEDED");
+    expect(delegates.project.create).not.toHaveBeenCalled();
+  });
+
+  it("does not cap project creation for an active premium subscription", async () => {
+    delegates.subscription.findUnique.mockResolvedValue({
+      plan: "PREMIUM",
+      status: "ACTIVE",
+    });
+    delegates.project.create.mockResolvedValue({
+      id: "project-premium",
+      name: "Premium project",
+    });
+
+    const response = await request(app)
+      .post("/organizations/org-a/projects")
+      .set("Authorization", "******")
+      .send({ name: "Premium project" });
+
+    expect(response.status).toBe(201);
+    expect(delegates.usageRecord.aggregate).not.toHaveBeenCalled();
+    expect(delegates.project.count).not.toHaveBeenCalled();
   });
 
   it("creates an assigned subtask in the same project and organization", async () => {
@@ -319,6 +385,35 @@ describe("teams, projects, tasks, and comments routes", () => {
         }),
       }),
     );
+    expect(delegates.usageRecord.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          organizationId: "org-a",
+          metric: "TASK",
+          source: "task.create",
+          idempotencyKey: "task:subtask-a",
+        }),
+      }),
+    );
+  });
+
+  it("blocks task creation when the monthly free-plan quota is exhausted", async () => {
+    delegates.subscription.findUnique.mockResolvedValue({
+      plan: "FREE",
+      status: "ACTIVE",
+    });
+    delegates.usageRecord.aggregate.mockResolvedValue({
+      _sum: { quantity: 500 },
+    });
+
+    const response = await request(app)
+      .post("/organizations/org-a/projects/project-a/tasks")
+      .set("Authorization", "******")
+      .send({ title: "Over quota" });
+
+    expect(response.status).toBe(402);
+    expect(response.body.code).toBe("PLAN_LIMIT_EXCEEDED");
+    expect(delegates.task.create).not.toHaveBeenCalled();
   });
 
   it("rejects assigning a task to a user outside the organization", async () => {
