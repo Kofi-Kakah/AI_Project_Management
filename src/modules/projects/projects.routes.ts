@@ -1,6 +1,10 @@
 import { Router } from "express";
 import { requireAuth } from "../../middleware/auth";
 import { requireOrganizationRole } from "../../middleware/rbac";
+import {
+  cacheOrganizationResponses,
+  invalidateOrganizationResponses,
+} from "../../middleware/responseCache";
 import { validate } from "../../middleware/validate";
 import { create, get, list, remove, update } from "./projects.controller";
 import {
@@ -16,6 +20,8 @@ const organizationAccess = [
   requireAuth,
   validate(projectIdParamsSchema.omit({ projectId: true }), "params"),
   requireOrganizationRole(),
+  cacheOrganizationResponses,
+  invalidateOrganizationResponses,
 ];
 
 projectsRouter.get(

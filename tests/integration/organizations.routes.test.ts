@@ -1,7 +1,10 @@
 import express from "express";
 import request from "supertest";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { MembershipStatus, OrganizationRole } from "../../generated/prisma/enums";
+import {
+  MembershipStatus,
+  OrganizationRole,
+} from "../../generated/prisma/enums";
 
 const { prismaMocks } = vi.hoisted(() => ({
   prismaMocks: {
@@ -37,8 +40,20 @@ vi.mock("../../src/config/db", () => ({
   },
 }));
 
+vi.mock("../../src/config/redis", () => ({
+  redis: {
+    get: vi.fn().mockResolvedValue(null),
+    set: vi.fn().mockResolvedValue("OK"),
+    incr: vi.fn().mockResolvedValue(1),
+  },
+}));
+
 vi.mock("../../src/middleware/auth", () => ({
-  requireAuth: (req: express.Request, _res: express.Response, next: express.NextFunction) => {
+  requireAuth: (
+    req: express.Request,
+    _res: express.Response,
+    next: express.NextFunction,
+  ) => {
     const userId = req.header("authorization")?.replace(/^Bearer /, "");
     if (userId) req.auth = { userId, email: `${userId}@example.com` };
     next();
@@ -46,10 +61,14 @@ vi.mock("../../src/middleware/auth", () => ({
 }));
 
 vi.stubEnv("DATABASE_URL", "postgresql://localhost:5432/test");
-vi.stubEnv("JWT_ACCESS_TOKEN_SECRET", "test-secret-that-is-long-enough-for-jwt");
+vi.stubEnv(
+  "JWT_ACCESS_TOKEN_SECRET",
+  "test-secret-that-is-long-enough-for-jwt",
+);
 
 const { errorHandler } = await import("../../src/middleware/errorHandler");
-const { organizationsRouter } = await import("../../src/modules/organizations/organizations.routes");
+const { organizationsRouter } =
+  await import("../../src/modules/organizations/organizations.routes");
 
 const app = express();
 app.use(express.json());
@@ -62,7 +81,10 @@ describe("organization routes", () => {
   });
 
   it("creates an organization with its creator as active owner", async () => {
-    prismaMocks.organizationCreate.mockResolvedValue({ id: "org-a", memberships: [{ role: "OWNER" }] });
+    prismaMocks.organizationCreate.mockResolvedValue({
+      id: "org-a",
+      memberships: [{ role: "OWNER" }],
+    });
 
     const response = await request(app)
       .post("/organizations")
@@ -110,7 +132,9 @@ describe("organization routes", () => {
     expect(response.status).toBe(404);
     expect(prismaMocks.membershipFindUnique).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { organizationId_userId: { organizationId: "org-a", userId: "user-b" } },
+        where: {
+          organizationId_userId: { organizationId: "org-a", userId: "user-b" },
+        },
       }),
     );
   });

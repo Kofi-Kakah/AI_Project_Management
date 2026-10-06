@@ -1,6 +1,10 @@
 import { Router } from "express";
 import { requireAuth } from "../../middleware/auth";
 import { requireOrganizationRole } from "../../middleware/rbac";
+import {
+  cacheOrganizationResponses,
+  invalidateOrganizationResponses,
+} from "../../middleware/responseCache";
 import { validate } from "../../middleware/validate";
 import { create, get, list, remove, update } from "./teams.controller";
 import {
@@ -16,6 +20,8 @@ teamsRouter.use(
   requireAuth,
   validate(teamIdParamsSchema.omit({ teamId: true }), "params"),
   requireOrganizationRole(),
+  cacheOrganizationResponses,
+  invalidateOrganizationResponses,
 );
 teamsRouter.get("/", validate(paginationQuerySchema, "query"), list);
 teamsRouter.post("/", validate(createTeamSchema), create);

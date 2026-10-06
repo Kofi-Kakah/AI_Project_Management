@@ -41,6 +41,14 @@ vi.mock("../../src/config/db", () => ({
   },
 }));
 
+vi.mock("../../src/config/redis", () => ({
+  redis: {
+    get: vi.fn().mockResolvedValue(null),
+    set: vi.fn().mockResolvedValue("OK"),
+    incr: vi.fn().mockResolvedValue(1),
+  },
+}));
+
 vi.mock("../../src/middleware/auth", () => ({
   requireAuth: (
     req: express.Request,

@@ -7,13 +7,19 @@ async function sendRedisCommand(...args: string[]): Promise<RedisReply> {
   if (!command) throw new Error("Rate-limit Redis command was empty");
 
   const reply: unknown = await redis.call(command, ...commandArgs);
-  const isRedisValue = (value: unknown): value is boolean | number | string | null =>
+  const isRedisValue = (
+    value: unknown,
+  ): value is boolean | number | string | null =>
     value === null ||
     typeof value === "boolean" ||
     typeof value === "number" ||
     typeof value === "string";
   if (reply === null) return false;
-  if (typeof reply === "boolean" || typeof reply === "number" || typeof reply === "string") {
+  if (
+    typeof reply === "boolean" ||
+    typeof reply === "number" ||
+    typeof reply === "string"
+  ) {
     return reply;
   }
   if (Array.isArray(reply) && reply.every(isRedisValue)) {
@@ -22,13 +28,25 @@ async function sendRedisCommand(...args: string[]): Promise<RedisReply> {
   throw new Error("Rate-limit Redis returned an unsupported response");
 }
 
-export const authRateLimit = rateLimit({
+const redisStore = (prefix: string) =>
+  new RedisStore({
+    prefix,
+    sendCommand: sendRedisCommand,
+  });
+
+export const apiRateLimit = rateLimit({
   windowMs: 15 * 60 * 1000,
-  limit: 30,
+  limit: 120,
   standardHeaders: true,
   legacyHeaders: false,
-  store: new RedisStore({
-    prefix: "rate-limit:auth:",
-    sendCommand: sendRedisCommand,
-  }),
+  skip: (req) => req.path === "/health",
+  store: redisStore("rate-limit:api:"),
+});
+
+export const authRateLimit = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  store: redisStore("rate-limit:auth:"),
 });
