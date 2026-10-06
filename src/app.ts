@@ -6,7 +6,7 @@ import { env } from "./config/env";
 import { prisma } from "./config/db";
 import { redis } from "./config/redis";
 import { errorHandler } from "./middleware/errorHandler";
-import { authRateLimit } from "./middleware/rateLimit";
+import { apiRateLimit, authRateLimit } from "./middleware/rateLimit";
 import { requestLogger } from "./middleware/requestLogger";
 import { authRouter } from "./modules/auth/auth.routes";
 import {
@@ -28,6 +28,7 @@ app.use(
   }),
 );
 app.use(requestLogger);
+app.use(apiRateLimit);
 app.use(express.json({ limit: "32kb" }));
 app.use(cookieParser());
 
