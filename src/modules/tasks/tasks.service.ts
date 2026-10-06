@@ -8,6 +8,10 @@ import {
 import type { Prisma } from "../../../generated/prisma/client";
 import { prisma } from "../../config/db";
 import { enqueueNotification } from "../../jobs/queues";
+import {
+  emitProjectEvent,
+  REALTIME_SERVER_EVENTS,
+} from "../../realtime/socket";
 import { AppError } from "../../utils/AppError";
 import type { Pagination } from "../../utils/pagination";
 import * as activity from "../activity/activity.service";
@@ -235,6 +239,12 @@ export async function createTask(
     });
     return task;
   });
+  emitProjectEvent(
+    organizationId,
+    projectId,
+    REALTIME_SERVER_EVENTS.taskCreated,
+    task,
+  );
   if (task.assigneeId && task.assigneeId !== actorId) {
     await enqueueNotification({
       organizationId,
@@ -312,6 +322,12 @@ export async function updateTask(
       });
       return { task, previousAssigneeId: existing.assigneeId };
     });
+    emitProjectEvent(
+      organizationId,
+      result.task.projectId,
+      REALTIME_SERVER_EVENTS.taskUpdated,
+      result.task,
+    );
     if (
       result.task.assigneeId &&
       result.task.assigneeId !== actorId &&
@@ -341,7 +357,7 @@ export async function deleteTask(
   taskId: string,
 ) {
   try {
-    await prisma.$transaction(async (tx) => {
+    const task = await prisma.$transaction(async (tx) => {
       const task = await tx.task.delete({
         where: { id_organizationId: { id: taskId, organizationId } },
       });
@@ -353,7 +369,14 @@ export async function deleteTask(
         entityId: task.id,
         metadata: { title: task.title, projectId: task.projectId },
       });
+      return task;
     });
+    emitProjectEvent(
+      organizationId,
+      task.projectId,
+      REALTIME_SERVER_EVENTS.taskDeleted,
+      { taskId: task.id },
+    );
   } catch (error) {
     if (isPrismaError(error, "P2025"))
       throw new AppError("Task not found", 404, "NOT_FOUND");

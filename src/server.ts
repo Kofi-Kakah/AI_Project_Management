@@ -5,8 +5,10 @@ import { env } from "./config/env";
 import { prisma } from "./config/db";
 import { redis } from "./config/redis";
 import { closeQueues } from "./jobs/queues";
+import { closeRealtime, initializeRealtime } from "./realtime/socket";
 
 const server = createServer(app);
+initializeRealtime(server);
 
 server.listen(env.PORT, () => {
   console.info(`Server is running on http://localhost:${env.PORT}`);
@@ -18,18 +20,18 @@ async function shutdown(signal: string) {
   isShuttingDown = true;
   console.info(`${signal} received; shutting down gracefully`);
 
-  server.close(async (error) => {
-    if (error) {
-      console.error("HTTP server shutdown failed:", error);
-      process.exitCode = 1;
-    }
-    try {
-      await Promise.all([prisma.$disconnect(), redis.quit(), closeQueues()]);
-    } catch (shutdownError) {
-      console.error("Failed to close application connections:", shutdownError);
-      process.exitCode = 1;
-    }
-  });
+  try {
+    await closeRealtime();
+  } catch (shutdownError) {
+    console.error("Realtime server shutdown failed:", shutdownError);
+    process.exitCode = 1;
+  }
+  try {
+    await Promise.all([prisma.$disconnect(), redis.quit(), closeQueues()]);
+  } catch (shutdownError) {
+    console.error("Failed to close application connections:", shutdownError);
+    process.exitCode = 1;
+  }
 }
 
 process.once("SIGINT", () => void shutdown("SIGINT"));

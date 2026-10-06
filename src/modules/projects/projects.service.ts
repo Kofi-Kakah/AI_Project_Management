@@ -1,4 +1,8 @@
 import { prisma } from "../../config/db";
+import {
+  emitOrganizationEvent,
+  REALTIME_SERVER_EVENTS,
+} from "../../realtime/socket";
 import { AppError } from "../../utils/AppError";
 import type { Pagination } from "../../utils/pagination";
 import * as activity from "../activity/activity.service";
@@ -82,7 +86,7 @@ export async function createProject(
 ) {
   ensureDateRange(input.startsAt, input.dueAt);
   await ensureTeamBelongsToOrganization(organizationId, input.teamId, prisma);
-  return prisma.$transaction(async (tx) => {
+  const project = await prisma.$transaction(async (tx) => {
     const project = await tx.project.create({
       data: {
         organizationId,
@@ -105,6 +109,12 @@ export async function createProject(
     });
     return project;
   });
+  emitOrganizationEvent(
+    organizationId,
+    REALTIME_SERVER_EVENTS.projectCreated,
+    project,
+  );
+  return project;
 }
 
 export async function updateProject(
@@ -125,7 +135,7 @@ export async function updateProject(
   );
   await ensureTeamBelongsToOrganization(organizationId, input.teamId, prisma);
   try {
-    return await prisma.$transaction(async (tx) => {
+    const project = await prisma.$transaction(async (tx) => {
       const project = await tx.project.update({
         where: { id_organizationId: { id: projectId, organizationId } },
         data: input,
@@ -141,6 +151,12 @@ export async function updateProject(
       });
       return project;
     });
+    emitOrganizationEvent(
+      organizationId,
+      REALTIME_SERVER_EVENTS.projectUpdated,
+      project,
+    );
+    return project;
   } catch (error) {
     if (isPrismaError(error, "P2025"))
       throw new AppError("Project not found", 404, "NOT_FOUND");
@@ -154,7 +170,7 @@ export async function deleteProject(
   projectId: string,
 ) {
   try {
-    await prisma.$transaction(async (tx) => {
+    const project = await prisma.$transaction(async (tx) => {
       const project = await tx.project.delete({
         where: { id_organizationId: { id: projectId, organizationId } },
       });
@@ -166,7 +182,13 @@ export async function deleteProject(
         entityId: project.id,
         metadata: { name: project.name },
       });
+      return project;
     });
+    emitOrganizationEvent(
+      organizationId,
+      REALTIME_SERVER_EVENTS.projectDeleted,
+      { projectId: project.id },
+    );
   } catch (error) {
     if (isPrismaError(error, "P2025"))
       throw new AppError("Project not found", 404, "NOT_FOUND");

@@ -1,4 +1,8 @@
 import { prisma } from "../../config/db";
+import {
+  emitOrganizationEvent,
+  REALTIME_SERVER_EVENTS,
+} from "../../realtime/socket";
 import { AppError } from "../../utils/AppError";
 import type { Pagination } from "../../utils/pagination";
 import * as activity from "../activity/activity.service";
@@ -48,7 +52,7 @@ export async function createTeam(
   input: Required<Pick<TeamInput, "name">> & TeamInput,
 ) {
   try {
-    return await prisma.$transaction(async (tx) => {
+    const team = await prisma.$transaction(async (tx) => {
       const team = await tx.team.create({
         data: {
           organizationId,
@@ -66,6 +70,12 @@ export async function createTeam(
       });
       return team;
     });
+    emitOrganizationEvent(
+      organizationId,
+      REALTIME_SERVER_EVENTS.teamCreated,
+      team,
+    );
+    return team;
   } catch (error) {
     if (isPrismaError(error, "P2002")) {
       throw new AppError(
@@ -85,7 +95,7 @@ export async function updateTeam(
   input: TeamInput,
 ) {
   try {
-    return await prisma.$transaction(async (tx) => {
+    const team = await prisma.$transaction(async (tx) => {
       const team = await tx.team.update({
         where: { id_organizationId: { id: teamId, organizationId } },
         data: input,
@@ -100,6 +110,12 @@ export async function updateTeam(
       });
       return team;
     });
+    emitOrganizationEvent(
+      organizationId,
+      REALTIME_SERVER_EVENTS.teamUpdated,
+      team,
+    );
+    return team;
   } catch (error) {
     if (isPrismaError(error, "P2025"))
       throw new AppError("Team not found", 404, "NOT_FOUND");
@@ -120,7 +136,7 @@ export async function deleteTeam(
   teamId: string,
 ) {
   try {
-    await prisma.$transaction(async (tx) => {
+    const team = await prisma.$transaction(async (tx) => {
       const team = await tx.team.delete({
         where: { id_organizationId: { id: teamId, organizationId } },
       });
@@ -132,6 +148,10 @@ export async function deleteTeam(
         entityId: team.id,
         metadata: { name: team.name },
       });
+      return team;
+    });
+    emitOrganizationEvent(organizationId, REALTIME_SERVER_EVENTS.teamDeleted, {
+      teamId: team.id,
     });
   } catch (error) {
     if (isPrismaError(error, "P2025"))

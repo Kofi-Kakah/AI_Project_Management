@@ -6,30 +6,34 @@ import {
   OrganizationRole,
 } from "../../generated/prisma/enums";
 
-const { delegates } = vi.hoisted(() => {
-  const model = () => ({
-    create: vi.fn(),
-    updateMany: vi.fn(),
-    deleteMany: vi.fn(),
-    findFirst: vi.fn(),
-    findMany: vi.fn(),
-    findUnique: vi.fn(),
-    count: vi.fn(),
-    update: vi.fn(),
-    delete: vi.fn(),
-  });
-  return {
-    delegates: {
-      membership: model(),
-      team: model(),
-      teamMembership: model(),
-      project: model(),
-      task: model(),
-      comment: model(),
-      activityLog: model(),
-    },
-  };
-});
+const { delegates, emitOrganizationEvent, emitProjectEvent } = vi.hoisted(
+  () => {
+    const model = () => ({
+      create: vi.fn(),
+      updateMany: vi.fn(),
+      deleteMany: vi.fn(),
+      findFirst: vi.fn(),
+      findMany: vi.fn(),
+      findUnique: vi.fn(),
+      count: vi.fn(),
+      update: vi.fn(),
+      delete: vi.fn(),
+    });
+    return {
+      delegates: {
+        membership: model(),
+        team: model(),
+        teamMembership: model(),
+        project: model(),
+        task: model(),
+        comment: model(),
+        activityLog: model(),
+      },
+      emitOrganizationEvent: vi.fn(),
+      emitProjectEvent: vi.fn(),
+    };
+  },
+);
 
 vi.mock("../../src/config/db", () => ({
   prisma: {
@@ -53,6 +57,24 @@ const { enqueueNotification } = vi.hoisted(() => ({
   enqueueNotification: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock("../../src/jobs/queues", () => ({ enqueueNotification }));
+vi.mock("../../src/realtime/socket", () => ({
+  emitOrganizationEvent,
+  emitProjectEvent,
+  REALTIME_SERVER_EVENTS: {
+    taskCreated: "task:created",
+    taskUpdated: "task:updated",
+    taskDeleted: "task:deleted",
+    commentCreated: "comment:created",
+    commentUpdated: "comment:updated",
+    commentDeleted: "comment:deleted",
+    projectCreated: "project:created",
+    projectUpdated: "project:updated",
+    projectDeleted: "project:deleted",
+    teamCreated: "team:created",
+    teamUpdated: "team:updated",
+    teamDeleted: "team:deleted",
+  },
+}));
 
 vi.mock("../../src/middleware/auth", () => ({
   requireAuth: (
@@ -219,6 +241,11 @@ describe("teams, projects, tasks, and comments routes", () => {
       .send({ name: "Launch", dueAt: "2026-12-01T00:00:00.000Z" });
 
     expect(response.status).toBe(201);
+    expect(emitOrganizationEvent).toHaveBeenCalledWith(
+      "org-a",
+      "project:created",
+      expect.objectContaining({ id: "project-a" }),
+    );
     expect(delegates.project.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
@@ -251,6 +278,7 @@ describe("teams, projects, tasks, and comments routes", () => {
       id: "subtask-a",
       title: "Draft copy",
       parentId: "parent-a",
+      projectId: "project-a",
     });
 
     const response = await request(app)
@@ -265,6 +293,12 @@ describe("teams, projects, tasks, and comments routes", () => {
       });
 
     expect(response.status).toBe(201);
+    expect(emitProjectEvent).toHaveBeenCalledWith(
+      "org-a",
+      "project-a",
+      "task:created",
+      expect.objectContaining({ id: "subtask-a" }),
+    );
     expect(delegates.task.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
@@ -402,6 +436,7 @@ describe("teams, projects, tasks, and comments routes", () => {
       id: "task-a",
       assigneeId: "member-b",
       title: "Prepare release",
+      projectId: "project-a",
     });
     delegates.comment.create.mockResolvedValue({
       id: "comment-a",
@@ -414,6 +449,12 @@ describe("teams, projects, tasks, and comments routes", () => {
       .send({ body: "Looks good" });
 
     expect(response.status).toBe(201);
+    expect(emitProjectEvent).toHaveBeenCalledWith(
+      "org-a",
+      "project-a",
+      "comment:created",
+      expect.objectContaining({ id: "comment-a" }),
+    );
     expect(delegates.comment.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: {
@@ -473,6 +514,7 @@ describe("teams, projects, tasks, and comments routes", () => {
         taskId: "task-a",
         authorId: "another-user",
         body: "Existing comment",
+        task: { projectId: "project-a" },
       })
       .mockResolvedValueOnce({
         id: "comment-a",
@@ -489,6 +531,12 @@ describe("teams, projects, tasks, and comments routes", () => {
       .send({ body: "Edited comment" });
 
     expect(response.status).toBe(200);
+    expect(emitProjectEvent).toHaveBeenCalledWith(
+      "org-a",
+      "project-a",
+      "comment:updated",
+      expect.objectContaining({ id: "comment-a" }),
+    );
     expect(delegates.comment.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: "comment-a", organizationId: "org-a" },

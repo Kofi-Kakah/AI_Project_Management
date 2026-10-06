@@ -6,6 +6,10 @@ import {
 import type { Prisma } from "../../../generated/prisma/client";
 import { prisma } from "../../config/db";
 import { enqueueNotification } from "../../jobs/queues";
+import {
+  emitProjectEvent,
+  REALTIME_SERVER_EVENTS,
+} from "../../realtime/socket";
 import { AppError } from "../../utils/AppError";
 import type { Pagination } from "../../utils/pagination";
 import * as activity from "../activity/activity.service";
@@ -25,10 +29,14 @@ async function ensureTask(
   client: WorkClient,
   organizationId: string,
   taskId: string,
-): Promise<{ assigneeId: string | null; title: string }> {
+): Promise<{
+  assigneeId: string | null;
+  title: string;
+  projectId: string;
+}> {
   const task = await client.task.findUnique({
     where: { id_organizationId: { id: taskId, organizationId } },
-    select: { id: true, assigneeId: true, title: true },
+    select: { id: true, assigneeId: true, title: true, projectId: true },
   });
   if (!task)
     throw new AppError("Task not found in this organization", 404, "NOT_FOUND");
@@ -81,6 +89,12 @@ export async function createComment(
     });
     return { comment, task };
   });
+  emitProjectEvent(
+    organizationId,
+    result.task.projectId,
+    REALTIME_SERVER_EVENTS.commentCreated,
+    result.comment,
+  );
   if (result.task.assigneeId && result.task.assigneeId !== actorId) {
     await enqueueNotification({
       organizationId,
@@ -98,7 +112,13 @@ export async function createComment(
 async function findComment(organizationId: string, commentId: string) {
   const comment = await prisma.comment.findFirst({
     where: { id: commentId, organizationId },
-    select: { id: true, taskId: true, authorId: true, body: true },
+    select: {
+      id: true,
+      taskId: true,
+      authorId: true,
+      body: true,
+      task: { select: { projectId: true } },
+    },
   });
   if (!comment) throw new AppError("Comment not found", 404, "NOT_FOUND");
   return comment;
@@ -130,7 +150,7 @@ export async function updateComment(
   const existing = await findComment(organizationId, commentId);
   requireCommentPermission(existing.authorId, actor);
   try {
-    return await prisma.$transaction(async (tx) => {
+    const comment = await prisma.$transaction(async (tx) => {
       const updated = await tx.comment.updateMany({
         where: { id: existing.id, organizationId },
         data: { body, editedAt: new Date() },
@@ -155,6 +175,13 @@ export async function updateComment(
       });
       return comment;
     });
+    emitProjectEvent(
+      organizationId,
+      existing.task.projectId,
+      REALTIME_SERVER_EVENTS.commentUpdated,
+      comment,
+    );
+    return comment;
   } catch (error) {
     if (isPrismaError(error, "P2025"))
       throw new AppError("Comment not found", 404, "NOT_FOUND");
@@ -186,6 +213,12 @@ export async function deleteComment(
         metadata: { taskId: existing.taskId },
       });
     });
+    emitProjectEvent(
+      organizationId,
+      existing.task.projectId,
+      REALTIME_SERVER_EVENTS.commentDeleted,
+      { commentId: existing.id, taskId: existing.taskId },
+    );
   } catch (error) {
     if (isPrismaError(error, "P2025"))
       throw new AppError("Comment not found", 404, "NOT_FOUND");

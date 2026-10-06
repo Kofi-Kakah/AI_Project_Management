@@ -5,6 +5,10 @@ import {
   type OrganizationRole as OrganizationRoleType,
 } from "../../../generated/prisma/enums";
 import { prisma } from "../../config/db";
+import {
+  emitOrganizationEvent,
+  REALTIME_SERVER_EVENTS,
+} from "../../realtime/socket";
 import { AppError } from "../../utils/AppError";
 
 function slugBase(name: string): string {
@@ -20,7 +24,12 @@ function slugBase(name: string): string {
 }
 
 function isUniqueConstraintError(error: unknown): boolean {
-  return typeof error === "object" && error !== null && "code" in error && error.code === "P2002";
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    error.code === "P2002"
+  );
 }
 
 export async function createOrganization(userId: string, name: string) {
@@ -52,7 +61,11 @@ export async function createOrganization(userId: string, name: string) {
     });
   } catch (error) {
     if (isUniqueConstraintError(error)) {
-      throw new AppError("An organization with this slug already exists", 409, "ORGANIZATION_CONFLICT");
+      throw new AppError(
+        "An organization with this slug already exists",
+        409,
+        "ORGANIZATION_CONFLICT",
+      );
     }
     throw error;
   }
@@ -70,15 +83,26 @@ export async function listOrganizations(userId: string) {
       },
     },
   });
-  return memberships.map(({ role, joinedAt, organization }) => ({ ...organization, role, joinedAt }));
+  return memberships.map(({ role, joinedAt, organization }) => ({
+    ...organization,
+    role,
+    joinedAt,
+  }));
 }
 
 export async function getOrganization(organizationId: string) {
   const organization = await prisma.organization.findUnique({
     where: { id: organizationId },
-    select: { id: true, name: true, slug: true, createdAt: true, updatedAt: true },
+    select: {
+      id: true,
+      name: true,
+      slug: true,
+      createdAt: true,
+      updatedAt: true,
+    },
   });
-  if (!organization) throw new AppError("Organization not found", 404, "NOT_FOUND");
+  if (!organization)
+    throw new AppError("Organization not found", 404, "NOT_FOUND");
   return organization;
 }
 
@@ -122,19 +146,29 @@ export async function inviteMember(
     select: { id: true, emailVerifiedAt: true, disabledAt: true },
   });
   if (!invitedUser || !invitedUser.emailVerifiedAt || invitedUser.disabledAt) {
-    throw new AppError("A verified account for this email was not found", 404, "USER_NOT_FOUND");
+    throw new AppError(
+      "A verified account for this email was not found",
+      404,
+      "USER_NOT_FOUND",
+    );
   }
 
   const existing = await prisma.membership.findUnique({
-    where: { organizationId_userId: { organizationId, userId: invitedUser.id } },
+    where: {
+      organizationId_userId: { organizationId, userId: invitedUser.id },
+    },
     select: { id: true, status: true },
   });
   if (existing) {
-    throw new AppError("This user already has a membership in the organization", 409, "MEMBERSHIP_EXISTS");
+    throw new AppError(
+      "This user already has a membership in the organization",
+      409,
+      "MEMBERSHIP_EXISTS",
+    );
   }
 
   try {
-    return await prisma.membership.create({
+    const membership = await prisma.membership.create({
       data: {
         organizationId,
         userId: invitedUser.id,
@@ -150,15 +184,29 @@ export async function inviteMember(
         user: { select: { id: true, email: true, name: true } },
       },
     });
+    emitOrganizationEvent(
+      organizationId,
+      REALTIME_SERVER_EVENTS.memberInvited,
+      membership,
+    );
+    return membership;
   } catch (error) {
     if (isUniqueConstraintError(error)) {
-      throw new AppError("This user already has a membership in the organization", 409, "MEMBERSHIP_EXISTS");
+      throw new AppError(
+        "This user already has a membership in the organization",
+        409,
+        "MEMBERSHIP_EXISTS",
+      );
     }
     throw error;
   }
 }
 
-export async function acceptInvitation(organizationId: string, membershipId: string, userId: string) {
+export async function acceptInvitation(
+  organizationId: string,
+  membershipId: string,
+  userId: string,
+) {
   const accepted = await prisma.membership.updateMany({
     where: {
       id: membershipId,
@@ -172,7 +220,7 @@ export async function acceptInvitation(organizationId: string, membershipId: str
     throw new AppError("Invitation not found", 404, "NOT_FOUND");
   }
 
-  return prisma.membership.findUniqueOrThrow({
+  const membership = await prisma.membership.findUniqueOrThrow({
     where: { id: membershipId },
     select: {
       id: true,
@@ -182,6 +230,12 @@ export async function acceptInvitation(organizationId: string, membershipId: str
       organization: { select: { id: true, name: true, slug: true } },
     },
   });
+  emitOrganizationEvent(
+    organizationId,
+    REALTIME_SERVER_EVENTS.memberJoined,
+    membership,
+  );
+  return membership;
 }
 
 export async function updateMemberRole(
@@ -191,21 +245,41 @@ export async function updateMemberRole(
   role: OrganizationRoleType,
 ) {
   const target = await prisma.membership.findFirst({
-    where: { id: membershipId, organizationId, status: MembershipStatus.ACTIVE },
+    where: {
+      id: membershipId,
+      organizationId,
+      status: MembershipStatus.ACTIVE,
+    },
     select: { id: true, userId: true, role: true },
   });
   if (!target) throw new AppError("Member not found", 404, "NOT_FOUND");
   if (target.role === OrganizationRole.OWNER) {
-    throw new AppError("The organization owner role cannot be changed here", 409, "OWNER_ROLE_PROTECTED");
+    throw new AppError(
+      "The organization owner role cannot be changed here",
+      409,
+      "OWNER_ROLE_PROTECTED",
+    );
   }
-  if (actor.role === OrganizationRole.ADMIN && (target.role !== OrganizationRole.MEMBER || role !== OrganizationRole.MEMBER)) {
-    throw new AppError("Admins can only manage regular members", 403, "FORBIDDEN");
+  if (
+    actor.role === OrganizationRole.ADMIN &&
+    (target.role !== OrganizationRole.MEMBER ||
+      role !== OrganizationRole.MEMBER)
+  ) {
+    throw new AppError(
+      "Admins can only manage regular members",
+      403,
+      "FORBIDDEN",
+    );
   }
   if (target.userId === actor.userId && target.role !== role) {
-    throw new AppError("You cannot change your own organization role", 403, "FORBIDDEN");
+    throw new AppError(
+      "You cannot change your own organization role",
+      403,
+      "FORBIDDEN",
+    );
   }
 
-  return prisma.membership.update({
+  const membership = await prisma.membership.update({
     where: { id: target.id },
     data: { role },
     select: {
@@ -215,4 +289,10 @@ export async function updateMemberRole(
       user: { select: { id: true, email: true, name: true } },
     },
   });
+  emitOrganizationEvent(
+    organizationId,
+    REALTIME_SERVER_EVENTS.memberRoleUpdated,
+    membership,
+  );
+  return membership;
 }
