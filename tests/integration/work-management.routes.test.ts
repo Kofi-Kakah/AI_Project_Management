@@ -49,6 +49,11 @@ vi.mock("../../src/config/redis", () => ({
   },
 }));
 
+const { enqueueNotification } = vi.hoisted(() => ({
+  enqueueNotification: vi.fn().mockResolvedValue(undefined),
+}));
+vi.mock("../../src/jobs/queues", () => ({ enqueueNotification }));
+
 vi.mock("../../src/middleware/auth", () => ({
   requireAuth: (
     req: express.Request,
@@ -393,7 +398,11 @@ describe("teams, projects, tasks, and comments routes", () => {
   });
 
   it("creates comments only on organization-scoped tasks and records activity", async () => {
-    delegates.task.findUnique.mockResolvedValue({ id: "task-a" });
+    delegates.task.findUnique.mockResolvedValue({
+      id: "task-a",
+      assigneeId: "member-b",
+      title: "Prepare release",
+    });
     delegates.comment.create.mockResolvedValue({
       id: "comment-a",
       body: "Looks good",
@@ -422,6 +431,15 @@ describe("teams, projects, tasks, and comments routes", () => {
           entityId: "comment-a",
           action: "created",
         }),
+      }),
+    );
+    expect(enqueueNotification).toHaveBeenCalledWith(
+      expect.objectContaining({
+        organizationId: "org-a",
+        userId: "member-b",
+        type: "COMMENT_ADDED",
+        resourceType: "task",
+        resourceId: "task-a",
       }),
     );
   });

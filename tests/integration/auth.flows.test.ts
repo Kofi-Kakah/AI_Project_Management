@@ -14,7 +14,7 @@ const mocks = vi.hoisted(() => ({
   refreshUpdate: vi.fn(),
   refreshUpdateMany: vi.fn(),
   transaction: vi.fn(),
-  sendAuthLink: vi.fn(),
+  enqueueEmail: vi.fn(),
   argonHash: vi.fn(),
   argonVerify: vi.fn(),
 }));
@@ -37,13 +37,18 @@ vi.mock("../../src/config/db", () => ({
   },
 }));
 
-vi.mock("../../src/utils/mailer", () => ({ sendAuthLink: mocks.sendAuthLink }));
+vi.mock("../../src/jobs/queues", () => ({
+  enqueueEmail: mocks.enqueueEmail,
+}));
 vi.mock("argon2", () => ({
   default: { hash: mocks.argonHash, verify: mocks.argonVerify },
 }));
 
 vi.stubEnv("DATABASE_URL", "postgresql://test:test@localhost:5432/test");
-vi.stubEnv("JWT_ACCESS_TOKEN_SECRET", "test-secret-that-is-long-enough-for-jwt");
+vi.stubEnv(
+  "JWT_ACCESS_TOKEN_SECRET",
+  "test-secret-that-is-long-enough-for-jwt",
+);
 vi.stubEnv("JWT_ACCESS_TOKEN_EXPIRATION", "15m");
 vi.stubEnv("JWT_REFRESH_TOKEN_EXPIRATION", "7d");
 vi.stubEnv("GOOGLE_CLIENT_ID", "");
@@ -79,9 +84,12 @@ const verifiedUser = {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mocks.argonHash.mockImplementation(async (password: string) => `argon2:${password}`);
+  mocks.argonHash.mockImplementation(
+    async (password: string) => `argon2:${password}`,
+  );
   mocks.argonVerify.mockImplementation(
-    async (encoded: string, password: string) => encoded === `argon2:${password}`,
+    async (encoded: string, password: string) =>
+      encoded === `argon2:${password}`,
   );
   mocks.userCreate.mockResolvedValue({ id: "user_1" });
   mocks.userFindUnique.mockResolvedValue(verifiedUser);
@@ -91,20 +99,19 @@ beforeEach(() => {
   mocks.refreshFindUnique.mockResolvedValue(null);
   mocks.refreshUpdate.mockResolvedValue({});
   mocks.refreshUpdateMany.mockResolvedValue({ count: 1 });
-  mocks.transaction.mockImplementation(
-    (callback: (tx: unknown) => unknown) =>
-      callback({
-        user: {
-          findUnique: mocks.userFindUnique,
-          updateMany: mocks.userUpdateMany,
-        },
-        refreshToken: {
-          findUnique: mocks.refreshFindUnique,
-          create: mocks.refreshCreate,
-          update: mocks.refreshUpdate,
-          updateMany: mocks.refreshUpdateMany,
-        },
-      }),
+  mocks.transaction.mockImplementation((callback: (tx: unknown) => unknown) =>
+    callback({
+      user: {
+        findUnique: mocks.userFindUnique,
+        updateMany: mocks.userUpdateMany,
+      },
+      refreshToken: {
+        findUnique: mocks.refreshFindUnique,
+        create: mocks.refreshCreate,
+        update: mocks.refreshUpdate,
+        updateMany: mocks.refreshUpdateMany,
+      },
+    }),
   );
 });
 
@@ -127,13 +134,21 @@ describe("authentication flows", () => {
       }),
       select: { id: true },
     });
-    const storedToken = mocks.userCreate.mock.calls[0][0].data.emailVerificationHash;
-    expect(storedToken).not.toBe(mocks.sendAuthLink.mock.calls[0]?.[2]);
-    expect(mocks.sendAuthLink).toHaveBeenCalledWith("verify", "user@example.com", expect.any(String));
+    const storedToken =
+      mocks.userCreate.mock.calls[0][0].data.emailVerificationHash;
+    expect(storedToken).not.toBe(mocks.enqueueEmail.mock.calls[0]?.[0].token);
+    expect(mocks.enqueueEmail).toHaveBeenCalledWith({
+      kind: "verify",
+      email: "user@example.com",
+      token: expect.any(String),
+    });
   });
 
   it("does not sign in an account before email verification", async () => {
-    mocks.userFindUnique.mockResolvedValueOnce({ ...verifiedUser, emailVerifiedAt: null });
+    mocks.userFindUnique.mockResolvedValueOnce({
+      ...verifiedUser,
+      emailVerifiedAt: null,
+    });
 
     const response = await request(app)
       .post("/auth/login")
@@ -160,11 +175,14 @@ describe("authentication flows", () => {
     expect(response.status).toBe(200);
     expect(response.body.user.email).toBe("user@example.com");
     expect(response.body.accessToken).toEqual(expect.any(String));
-    const accessClaims = jwt.decode(response.body.accessToken) as jwt.JwtPayload;
+    const accessClaims = jwt.decode(
+      response.body.accessToken,
+    ) as jwt.JwtPayload;
     expect(accessClaims.exp! - accessClaims.iat!).toBe(15 * 60);
     expect(response.headers["set-cookie"][0]).toContain("HttpOnly");
     const rawRefreshToken = decodeURIComponent(
-      response.headers["set-cookie"][0].match(/refreshToken=([^;]+)/)?.[1] ?? "",
+      response.headers["set-cookie"][0].match(/refreshToken=([^;]+)/)?.[1] ??
+        "",
     );
     expect(rawRefreshToken).toBeTruthy();
     expect(mocks.refreshCreate).toHaveBeenCalledWith({
@@ -192,7 +210,11 @@ describe("authentication flows", () => {
 
     expect(response.status).toBe(200);
     expect(mocks.refreshUpdateMany).toHaveBeenCalledWith({
-      where: { id: "refresh_old", revokedAt: null, expiresAt: { gt: expect.any(Date) } },
+      where: {
+        id: "refresh_old",
+        revokedAt: null,
+        expiresAt: { gt: expect.any(Date) },
+      },
       data: { revokedAt: expect.any(Date) },
     });
     expect(mocks.refreshUpdate).toHaveBeenCalledWith({
@@ -224,7 +246,9 @@ describe("authentication flows", () => {
       emailVerificationExpiresAt: new Date(Date.now() + 60_000),
     });
 
-    const response = await request(app).get("/auth/verify-email?token=verification-secret");
+    const response = await request(app).get(
+      "/auth/verify-email?token=verification-secret",
+    );
 
     expect(response.status).toBe(200);
     expect(mocks.userFindUnique).toHaveBeenCalledWith({

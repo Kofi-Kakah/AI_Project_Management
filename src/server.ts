@@ -4,6 +4,7 @@ import { app } from "./app";
 import { env } from "./config/env";
 import { prisma } from "./config/db";
 import { redis } from "./config/redis";
+import { closeQueues } from "./jobs/queues";
 
 const server = createServer(app);
 
@@ -23,7 +24,7 @@ async function shutdown(signal: string) {
       process.exitCode = 1;
     }
     try {
-      await Promise.all([prisma.$disconnect(), redis.quit()]);
+      await Promise.all([prisma.$disconnect(), redis.quit(), closeQueues()]);
     } catch (shutdownError) {
       console.error("Failed to close application connections:", shutdownError);
       process.exitCode = 1;

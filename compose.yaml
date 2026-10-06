@@ -55,6 +55,32 @@ services:
       migrate:
         condition: service_completed_successfully
 
+  worker:
+    build:
+      context: .
+    command: ["node", "dist/src/jobs/worker.js"]
+    restart: unless-stopped
+    init: true
+    environment:
+      NODE_ENV: production
+      APP_URL: ${APP_URL:-http://localhost:4000}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+      DATABASE_URL: ${DOCKER_DATABASE_URL:-postgresql://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD:-app}@postgres:5432/${POSTGRES_DB:-ai_project_management}?schema=public}
+      REDIS_URL: ${DOCKER_REDIS_URL:-redis://redis:6379}
+      EMAIL_HOST: ${EMAIL_HOST:-}
+      EMAIL_PORT: ${EMAIL_PORT:-587}
+      EMAIL_USERNAME: ${EMAIL_USERNAME:-}
+      EMAIL_PASSWORD: ${EMAIL_PASSWORD:-}
+      EMAIL_FROM: ${EMAIL_FROM:-}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
   postgres:
     image: postgres:17-alpine
     restart: unless-stopped

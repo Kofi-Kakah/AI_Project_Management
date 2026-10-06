@@ -1,5 +1,7 @@
 import type { RequestHandler } from "express";
 import { OrganizationRole } from "../../../generated/prisma/enums";
+import { env } from "../../config/env";
+import { enqueueEmail } from "../../jobs/queues";
 import { AppError } from "../../utils/AppError";
 import {
   acceptInvitation,
@@ -14,14 +16,19 @@ import {
 
 function authenticatedUserId(req: Parameters<RequestHandler>[0]): string {
   const userId = req.auth?.userId;
-  if (!userId) throw new AppError("Authentication required", 401, "UNAUTHENTICATED");
+  if (!userId)
+    throw new AppError("Authentication required", 401, "UNAUTHENTICATED");
   return userId;
 }
 
 function activeOrganization(req: Parameters<RequestHandler>[0]) {
   const organization = req.organization;
   if (!organization) {
-    throw new AppError("Organization access was not authorized", 403, "FORBIDDEN");
+    throw new AppError(
+      "Organization access was not authorized",
+      403,
+      "FORBIDDEN",
+    );
   }
   return organization;
 }
@@ -29,14 +36,21 @@ function activeOrganization(req: Parameters<RequestHandler>[0]) {
 function routeParam(req: Parameters<RequestHandler>[0], name: string): string {
   const value = req.params[name];
   if (typeof value !== "string" || value.length === 0) {
-    throw new AppError("A valid route parameter is required", 400, "VALIDATION_ERROR");
+    throw new AppError(
+      "A valid route parameter is required",
+      400,
+      "VALIDATION_ERROR",
+    );
   }
   return value;
 }
 
 export const create: RequestHandler = async (req, res, next) => {
   try {
-    const organization = await createOrganization(authenticatedUserId(req), req.body.name);
+    const organization = await createOrganization(
+      authenticatedUserId(req),
+      req.body.name,
+    );
     res.status(201).json({ organization });
   } catch (error) {
     next(error);
@@ -45,7 +59,9 @@ export const create: RequestHandler = async (req, res, next) => {
 
 export const list: RequestHandler = async (req, res, next) => {
   try {
-    res.json({ organizations: await listOrganizations(authenticatedUserId(req)) });
+    res.json({
+      organizations: await listOrganizations(authenticatedUserId(req)),
+    });
   } catch (error) {
     next(error);
   }
@@ -53,7 +69,9 @@ export const list: RequestHandler = async (req, res, next) => {
 
 export const get: RequestHandler = async (req, res, next) => {
   try {
-    res.json({ organization: await getOrganization(activeOrganization(req).id) });
+    res.json({
+      organization: await getOrganization(activeOrganization(req).id),
+    });
   } catch (error) {
     next(error);
   }
@@ -61,7 +79,9 @@ export const get: RequestHandler = async (req, res, next) => {
 
 export const listMembers: RequestHandler = async (req, res, next) => {
   try {
-    res.json({ members: await listOrganizationMembers(activeOrganization(req).id) });
+    res.json({
+      members: await listOrganizationMembers(activeOrganization(req).id),
+    });
   } catch (error) {
     next(error);
   }
@@ -69,7 +89,9 @@ export const listMembers: RequestHandler = async (req, res, next) => {
 
 export const listInvitations: RequestHandler = async (req, res, next) => {
   try {
-    res.json({ invitations: await listMyInvitations(authenticatedUserId(req)) });
+    res.json({
+      invitations: await listMyInvitations(authenticatedUserId(req)),
+    });
   } catch (error) {
     next(error);
   }
@@ -78,15 +100,35 @@ export const listInvitations: RequestHandler = async (req, res, next) => {
 export const invite: RequestHandler = async (req, res, next) => {
   try {
     const organization = activeOrganization(req);
-    if (organization.role === OrganizationRole.ADMIN && req.body.role === OrganizationRole.ADMIN) {
-      throw new AppError("Admins can only invite regular members", 403, "FORBIDDEN");
+    if (
+      organization.role === OrganizationRole.ADMIN &&
+      req.body.role === OrganizationRole.ADMIN
+    ) {
+      throw new AppError(
+        "Admins can only invite regular members",
+        403,
+        "FORBIDDEN",
+      );
     }
+    const organizationRecord = await getOrganization(organization.id);
     const membership = await inviteMember(
       organization.id,
       authenticatedUserId(req),
       req.body.email,
       req.body.role,
     );
+    const invitationUrl = new URL(
+      `/invitations/${membership.id}`,
+      env.FRONTEND_URL,
+    ).toString();
+    await enqueueEmail({
+      kind: "invitation",
+      email: membership.user.email,
+      inviteeName: membership.user.name,
+      inviterName: req.auth?.email ?? "An organization administrator",
+      organizationName: organizationRecord.name,
+      invitationUrl,
+    });
     res.status(201).json({ invitation: membership });
   } catch (error) {
     next(error);

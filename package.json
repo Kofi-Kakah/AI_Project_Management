@@ -5,6 +5,7 @@
   "main": "server.js",
   "scripts": {
     "dev": "tsx watch src/server.ts",
+    "worker": "tsx src/jobs/worker.ts",
     "build": "tsc",
     "start": "node dist/src/server.js",
     "lint": "eslint . --ext .ts",

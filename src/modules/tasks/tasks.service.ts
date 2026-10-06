@@ -1,11 +1,13 @@
 import {
   MembershipStatus,
+  NotificationType,
   TaskStatus,
   type TaskPriority as TaskPriorityType,
   type TaskStatus as TaskStatusType,
 } from "../../../generated/prisma/enums";
 import type { Prisma } from "../../../generated/prisma/client";
 import { prisma } from "../../config/db";
+import { enqueueNotification } from "../../jobs/queues";
 import { AppError } from "../../utils/AppError";
 import type { Pagination } from "../../utils/pagination";
 import * as activity from "../activity/activity.service";
@@ -200,7 +202,7 @@ export async function createTask(
   input: Required<Pick<TaskInput, "title">> & TaskInput,
 ) {
   ensureDateRange(input.startsAt, input.dueAt);
-  return prisma.$transaction(async (tx) => {
+  const task = await prisma.$transaction(async (tx) => {
     await ensureProject(tx, organizationId, projectId);
     await ensureParent(tx, organizationId, projectId, input.parentId);
     await ensureAssignee(tx, organizationId, input.assigneeId);
@@ -233,6 +235,18 @@ export async function createTask(
     });
     return task;
   });
+  if (task.assigneeId && task.assigneeId !== actorId) {
+    await enqueueNotification({
+      organizationId,
+      userId: task.assigneeId,
+      type: NotificationType.TASK_ASSIGNED,
+      title: "Task assigned to you",
+      body: task.title,
+      resourceType: "task",
+      resourceId: task.id,
+    });
+  }
+  return task;
 }
 
 export async function updateTask(
@@ -242,13 +256,14 @@ export async function updateTask(
   input: TaskInput,
 ) {
   try {
-    return await prisma.$transaction(async (tx) => {
+    const result = await prisma.$transaction(async (tx) => {
       const existing = await tx.task.findUnique({
         where: { id_organizationId: { id: taskId, organizationId } },
         select: {
           id: true,
           projectId: true,
           status: true,
+          assigneeId: true,
           startsAt: true,
           dueAt: true,
         },
@@ -295,8 +310,24 @@ export async function updateTask(
         entityId: task.id,
         metadata: { title: task.title, projectId: existing.projectId },
       });
-      return task;
+      return { task, previousAssigneeId: existing.assigneeId };
     });
+    if (
+      result.task.assigneeId &&
+      result.task.assigneeId !== actorId &&
+      result.task.assigneeId !== result.previousAssigneeId
+    ) {
+      await enqueueNotification({
+        organizationId,
+        userId: result.task.assigneeId,
+        type: NotificationType.TASK_ASSIGNED,
+        title: "Task assigned to you",
+        body: result.task.title,
+        resourceType: "task",
+        resourceId: result.task.id,
+      });
+    }
+    return result.task;
   } catch (error) {
     if (isPrismaError(error, "P2025"))
       throw new AppError("Task not found", 404, "NOT_FOUND");

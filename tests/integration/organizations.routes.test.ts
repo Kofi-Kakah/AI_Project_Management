@@ -48,6 +48,9 @@ vi.mock("../../src/config/redis", () => ({
   },
 }));
 
+const { enqueueEmail } = vi.hoisted(() => ({ enqueueEmail: vi.fn() }));
+vi.mock("../../src/jobs/queues", () => ({ enqueueEmail }));
+
 vi.mock("../../src/middleware/auth", () => ({
   requireAuth: (
     req: express.Request,
@@ -171,6 +174,53 @@ describe("organization routes", () => {
 
     expect(response.status).toBe(403);
     expect(prismaMocks.userFindUnique).not.toHaveBeenCalled();
+  });
+
+  it("queues an invitation email after creating the membership invitation", async () => {
+    prismaMocks.organizationFindUnique.mockResolvedValue({
+      id: "org-a",
+      name: "Acme Projects",
+    });
+    prismaMocks.userFindUnique.mockResolvedValue({
+      id: "invitee-a",
+      email: "invitee@example.com",
+      emailVerifiedAt: new Date(),
+      disabledAt: null,
+    });
+    prismaMocks.membershipFindUnique
+      .mockResolvedValueOnce({
+        organizationId: "org-a",
+        userId: "user-a",
+        role: OrganizationRole.OWNER,
+        status: MembershipStatus.ACTIVE,
+      })
+      .mockResolvedValueOnce(null);
+    prismaMocks.membershipCreate.mockResolvedValue({
+      id: "membership-a",
+      role: OrganizationRole.MEMBER,
+      status: MembershipStatus.INVITED,
+      createdAt: new Date(),
+      user: {
+        id: "invitee-a",
+        email: "invitee@example.com",
+        name: "Invitee",
+      },
+    });
+
+    const response = await request(app)
+      .post("/organizations/org-a/invitations")
+      .set("Authorization", "******")
+      .send({ email: "invitee@example.com", role: "MEMBER" });
+
+    expect(response.status).toBe(201);
+    expect(enqueueEmail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "invitation",
+        email: "invitee@example.com",
+        organizationName: "Acme Projects",
+        invitationUrl: "http://localhost:3000/invitations/membership-a",
+      }),
+    );
   });
 
   it("scopes role changes to the requested organization", async () => {

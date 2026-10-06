@@ -3,8 +3,14 @@ import type { RequestHandler } from "express";
 import { z } from "zod";
 import { env } from "../../config/env";
 import { prisma } from "../../config/db";
-import { sendAuthLink } from "../../utils/mailer";
-import { accessToken, hashToken, issueSession, randomToken, refreshExpiry } from "../../utils/tokens";
+import { enqueueEmail } from "../../jobs/queues";
+import {
+  accessToken,
+  hashToken,
+  issueSession,
+  randomToken,
+  refreshExpiry,
+} from "../../utils/tokens";
 import {
   credentialsSchema,
   emailSchema,
@@ -43,7 +49,12 @@ function requestMetadata(req: Parameters<RequestHandler>[0]) {
 }
 
 function isUniqueConstraintError(error: unknown): boolean {
-  return typeof error === "object" && error !== null && "code" in error && error.code === "P2002";
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    error.code === "P2002"
+  );
 }
 
 function publicUser(user: {
@@ -64,9 +75,7 @@ function publicUser(user: {
   };
 }
 
-function isGoogleAuthUser(
-  value: unknown,
-): value is {
+function isGoogleAuthUser(value: unknown): value is {
   id: string;
   email: string;
   name: string;
@@ -89,14 +98,18 @@ function isGoogleAuthUser(
     (value.emailVerifiedAt instanceof Date || value.emailVerifiedAt === null) &&
     "createdAt" in value &&
     value.createdAt instanceof Date &&
-    (!("disabledAt" in value) || value.disabledAt === null || value.disabledAt instanceof Date)
+    (!("disabledAt" in value) ||
+      value.disabledAt === null ||
+      value.disabledAt instanceof Date)
   );
 }
 
 export const register: RequestHandler = async (req, res, next) => {
   const input = parseBody(registerSchema, req.body);
   if (!input) {
-    res.status(400).json({ error: "A valid name, email, and password are required" });
+    res
+      .status(400)
+      .json({ error: "A valid name, email, and password are required" });
     return;
   }
 
@@ -112,14 +125,20 @@ export const register: RequestHandler = async (req, res, next) => {
       },
       select: { id: true },
     });
-    await sendAuthLink("verify", input.email.toLowerCase(), verificationToken);
+    await enqueueEmail({
+      kind: "verify",
+      email: input.email.toLowerCase(),
+      token: verificationToken,
+    });
     res.status(201).json({
       message: "Account created. Check your email to verify your address.",
       userId: user.id,
     });
   } catch (error) {
     if (isUniqueConstraintError(error)) {
-      res.status(409).json({ error: "An account with this email already exists" });
+      res
+        .status(409)
+        .json({ error: "An account with this email already exists" });
       return;
     }
     next(error);
@@ -146,7 +165,9 @@ export const login: RequestHandler = async (req, res, next) => {
       return;
     }
     if (!user.emailVerifiedAt) {
-      res.status(403).json({ error: "Verify your email address before signing in" });
+      res
+        .status(403)
+        .json({ error: "Verify your email address before signing in" });
       return;
     }
 
@@ -272,8 +293,14 @@ export const verifyEmail: RequestHandler = async (req, res, next) => {
       where: { emailVerificationHash: hashToken(input.data.token) },
       select: { id: true, emailVerificationExpiresAt: true },
     });
-    if (!user || !user.emailVerificationExpiresAt || user.emailVerificationExpiresAt <= new Date()) {
-      res.status(400).json({ error: "Verification link is invalid or expired" });
+    if (
+      !user ||
+      !user.emailVerificationExpiresAt ||
+      user.emailVerificationExpiresAt <= new Date()
+    ) {
+      res
+        .status(400)
+        .json({ error: "Verification link is invalid or expired" });
       return;
     }
     await prisma.user.update({
@@ -300,7 +327,12 @@ export const resendVerification: RequestHandler = async (req, res, next) => {
   try {
     const user = await prisma.user.findUnique({
       where: { email: input.data.email.toLowerCase() },
-      select: { id: true, email: true, emailVerifiedAt: true, disabledAt: true },
+      select: {
+        id: true,
+        email: true,
+        emailVerifiedAt: true,
+        disabledAt: true,
+      },
     });
     if (user && !user.emailVerifiedAt && !user.disabledAt) {
       const token = randomToken();
@@ -308,12 +340,16 @@ export const resendVerification: RequestHandler = async (req, res, next) => {
         where: { id: user.id },
         data: {
           emailVerificationHash: hashToken(token),
-          emailVerificationExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+          emailVerificationExpiresAt: new Date(
+            Date.now() + 24 * 60 * 60 * 1000,
+          ),
         },
       });
-      await sendAuthLink("verify", user.email, token);
+      await enqueueEmail({ kind: "verify", email: user.email, token });
     }
-    res.json({ message: "If the account needs verification, a link will be sent" });
+    res.json({
+      message: "If the account needs verification, a link will be sent",
+    });
   } catch (error) {
     next(error);
   }
@@ -340,9 +376,11 @@ export const requestPasswordReset: RequestHandler = async (req, res, next) => {
           passwordResetExpiresAt: new Date(Date.now() + 60 * 60 * 1000),
         },
       });
-      await sendAuthLink("reset", user.email, token);
+      await enqueueEmail({ kind: "reset", email: user.email, token });
     }
-    res.json({ message: "If the account exists, a password reset link will be sent" });
+    res.json({
+      message: "If the account exists, a password reset link will be sent",
+    });
   } catch (error) {
     next(error);
   }
@@ -351,7 +389,9 @@ export const requestPasswordReset: RequestHandler = async (req, res, next) => {
 export const resetPassword: RequestHandler = async (req, res, next) => {
   const input = parseBody(resetPasswordSchema, req.body);
   if (!input) {
-    res.status(400).json({ error: "A valid reset token and new password are required" });
+    res
+      .status(400)
+      .json({ error: "A valid reset token and new password are required" });
     return;
   }
 
@@ -362,7 +402,11 @@ export const resetPassword: RequestHandler = async (req, res, next) => {
         where: { passwordResetHash: hashToken(input.token) },
         select: { id: true, passwordResetExpiresAt: true },
       });
-      if (!user || !user.passwordResetExpiresAt || user.passwordResetExpiresAt <= new Date()) {
+      if (
+        !user ||
+        !user.passwordResetExpiresAt ||
+        user.passwordResetExpiresAt <= new Date()
+      ) {
         return false;
       }
       const changed = await tx.user.updateMany({
@@ -385,7 +429,9 @@ export const resetPassword: RequestHandler = async (req, res, next) => {
       return true;
     });
     if (!reset) {
-      res.status(400).json({ error: "Password reset link is invalid or expired" });
+      res
+        .status(400)
+        .json({ error: "Password reset link is invalid or expired" });
       return;
     }
     res.json({ message: "Password has been reset" });
@@ -410,7 +456,10 @@ export const googleCallback: RequestHandler = async (req, res, next) => {
   }
 
   try {
-    const session = await issueSession({ id: user.id, email: user.email }, requestMetadata(req));
+    const session = await issueSession(
+      { id: user.id, email: user.email },
+      requestMetadata(req),
+    );
     setRefreshCookie(res, session.refreshToken);
     res.json({ accessToken: session.accessToken, user: publicUser(user) });
   } catch (error) {

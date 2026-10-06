@@ -1,9 +1,11 @@
 import {
+  NotificationType,
   OrganizationRole,
   type OrganizationRole as OrganizationRoleType,
 } from "../../../generated/prisma/enums";
 import type { Prisma } from "../../../generated/prisma/client";
 import { prisma } from "../../config/db";
+import { enqueueNotification } from "../../jobs/queues";
 import { AppError } from "../../utils/AppError";
 import type { Pagination } from "../../utils/pagination";
 import * as activity from "../activity/activity.service";
@@ -23,13 +25,14 @@ async function ensureTask(
   client: WorkClient,
   organizationId: string,
   taskId: string,
-): Promise<void> {
+): Promise<{ assigneeId: string | null; title: string }> {
   const task = await client.task.findUnique({
     where: { id_organizationId: { id: taskId, organizationId } },
-    select: { id: true },
+    select: { id: true, assigneeId: true, title: true },
   });
   if (!task)
     throw new AppError("Task not found in this organization", 404, "NOT_FOUND");
+  return task;
 }
 
 export async function listTaskComments(
@@ -60,8 +63,8 @@ export async function createComment(
   actorId: string,
   body: string,
 ) {
-  return prisma.$transaction(async (tx) => {
-    await ensureTask(tx, organizationId, taskId);
+  const result = await prisma.$transaction(async (tx) => {
+    const task = await ensureTask(tx, organizationId, taskId);
     const comment = await tx.comment.create({
       data: { organizationId, taskId, authorId: actorId, body },
       include: {
@@ -76,8 +79,20 @@ export async function createComment(
       entityId: comment.id,
       metadata: { taskId },
     });
-    return comment;
+    return { comment, task };
   });
+  if (result.task.assigneeId && result.task.assigneeId !== actorId) {
+    await enqueueNotification({
+      organizationId,
+      userId: result.task.assigneeId,
+      type: NotificationType.COMMENT_ADDED,
+      title: "New comment on your task",
+      body: result.task.title,
+      resourceType: "task",
+      resourceId: taskId,
+    });
+  }
+  return result.comment;
 }
 
 async function findComment(organizationId: string, commentId: string) {
