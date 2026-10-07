@@ -25,6 +25,26 @@ variable "cors_origin" {
   type        = string
 }
 
+variable "app_domain" {
+  description = "DNS hostname for the public API; must be covered by the ACM certificate."
+  type        = string
+
+  validation {
+    condition     = can(regex("^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?$", var.app_domain))
+    error_message = "app_domain must be a DNS hostname without a scheme or path."
+  }
+}
+
+variable "acm_certificate_arn" {
+  description = "ARN of an ACM certificate in the selected AWS region covering app_domain."
+  type        = string
+
+  validation {
+    condition     = can(regex("^arn:[^:]+:acm:[^:]+:[0-9]{12}:certificate/[0-9a-fA-F-]+$", var.acm_certificate_arn))
+    error_message = "acm_certificate_arn must be a valid ACM certificate ARN."
+  }
+}
+
 variable "google_callback_uri" {
   description = "Optional Google OAuth callback URL. Defaults to the generated API URL."
   type        = string

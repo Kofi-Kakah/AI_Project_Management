@@ -254,11 +254,11 @@ unset, not that the corresponding integration will work without it.
 | `GOOGLE_CLIENT_ID`             |                 No | Google OAuth client ID.                                                                                                               |
 | `GOOGLE_CLIENT_SECRET`         |                 No | Google OAuth client secret.                                                                                                           |
 | `GOOGLE_CALLBACK_URI`          |                 No | Google OAuth callback URL; defaults to `http://localhost:4000/auth/google/callback`.                                                  |
-| `EMAIL_HOST`                   |                 No | SMTP hostname for email workflows.                                                                                                    |
-| `EMAIL_PORT`                   |                 No | SMTP port; defaults to `587`.                                                                                                         |
-| `EMAIL_USERNAME`               |                 No | SMTP username.                                                                                                                        |
-| `EMAIL_PASSWORD`               |                 No | SMTP password.                                                                                                                        |
-| `EMAIL_FROM`                   |                 No | Sender address used for application email.                                                                                            |
+| `EMAIL_HOST`                   | Required for email | SMTP hostname for verification, password-reset, and invitation email.                                                                 |
+| `EMAIL_PORT`                   |                 No | SMTP port; defaults to `587` (`465` uses implicit TLS).                                                                               |
+| `EMAIL_USERNAME`               |                 No | SMTP username; configure together with `EMAIL_PASSWORD` when authentication is required.                                              |
+| `EMAIL_PASSWORD`               |                 No | SMTP password; configure together with `EMAIL_USERNAME` when authentication is required.                                              |
+| `EMAIL_FROM`                   | Required for email | Sender address used for application email.                                                                                            |
 | `STRIPE_SECRET_KEY`            |                 No | Stripe API secret for checkout, portal, and webhook processing.                                                                       |
 | `STRIPE_WEBHOOK_SECRET`        |                 No | Stripe signing secret used to verify `/billing/webhook`.                                                                              |
 | `STRIPE_PRICE_PRO`             |                 No | Stripe Price ID mapped to the Pro plan.                                                                                               |
@@ -279,6 +279,33 @@ The managed-services Compose profile uses additional deployment variables:
 That profile requires the API URL, frontend URL, CORS origin, and JWT/cookie
 secrets to be explicitly set. `compose.yaml` has local-only fallback secrets;
 never reuse those fallback values in a real environment.
+
+### Current local development configuration
+
+The local `.env` is configured for development with these non-secret settings:
+
+| Setting                       | Value                                        |
+| ----------------------------- | -------------------------------------------- |
+| `NODE_ENV`                    | `development`                                |
+| API URL and port              | `http://localhost:4000` (`PORT=4000`)        |
+| Frontend URL / CORS origin    | `http://localhost:3000`                      |
+| Google OAuth callback         | `http://localhost:4000/auth/google/callback` |
+| Access / refresh token expiry | `15m` / `7d`                                 |
+| Gemini model                  | `gemini-2.5-flash`                           |
+| Email SMTP port               | `587`                                        |
+| Log level                     | `debug`                                      |
+
+The local environment also has PostgreSQL, Redis, Gemini, SMTP, Google OAuth,
+Stripe, and Sentry settings configured. Their connection strings, keys,
+passwords, DSNs, and other credential values are deliberately not documented
+here. Keep them in the ignored `.env` file or a secrets manager; use
+`.env.example` as the safe template when setting up another environment.
+
+For email delivery, configure `EMAIL_HOST` and `EMAIL_FROM`, plus
+`EMAIL_USERNAME` and `EMAIL_PASSWORD` if required by your SMTP provider.
+Production email jobs fail and are retried if SMTP settings are missing or
+invalid. In non-production environments without SMTP configured, the worker
+records a warning without logging the message link or bearer token.
 
 ## API Reference
 
@@ -559,15 +586,16 @@ deployment environment or secret manager.
 
 ### AWS ECS/Fargate example
 
-`infra/aws/` contains Terraform for a test-oriented `us-east-1` environment
-with ECS/Fargate API and worker services, an HTTP Application Load Balancer,
-private RDS PostgreSQL and ElastiCache Redis, ECR, CloudWatch logs, and Secrets
-Manager. Services are not started until `deploy_services` is enabled after
-pushing the image and running the migration task.
+`infra/aws/` contains Terraform for an example `us-east-1` environment
+with ECS/Fargate API and worker services, an HTTPS Application Load Balancer
+that redirects HTTP requests, private RDS PostgreSQL and ElastiCache Redis,
+ECR, CloudWatch logs, and Secrets Manager. Services are not started until
+`deploy_services` is enabled after pushing the image and running the migration
+task.
 
-This AWS example is **not a turnkey production architecture**: its load
-balancer is HTTP-only because no domain/certificate was provided. Configure
-HTTPS before production, establish encrypted remote Terraform state and
+Set `app_domain` and an issued, matching same-region ACM
+`acm_certificate_arn` before applying, then point DNS at the output
+`load_balancer_dns_name`. Establish encrypted remote Terraform state and
 restricted state access before using real credentials, review AWS charges, and
 follow the staged deployment and teardown guidance in [DEPLOYING.md](DEPLOYING.md).
 
@@ -576,8 +604,8 @@ follow the staged deployment and teardown guidance in [DEPLOYING.md](DEPLOYING.m
 - Use unique, high-entropy secrets and a secret manager in deployed
   environments. Never deploy the development fallback credentials from
   `compose.yaml`.
-- Terminate public traffic with HTTPS in production. Production refresh cookies
-  require HTTPS.
+- The AWS deployment terminates public traffic with HTTPS and redirects HTTP
+  to HTTPS. Production refresh cookies require HTTPS.
 - Keep PostgreSQL and Redis private; limit inbound connectivity to application
   workloads. Require TLS for managed database/cache connections where
   supported.

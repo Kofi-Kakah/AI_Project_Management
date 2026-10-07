@@ -5,6 +5,7 @@ import { errorHandler } from "../../src/middleware/errorHandler";
 import { validate } from "../../src/middleware/validate";
 import { AppError } from "../../src/utils/AppError";
 import { emailSchema } from "../../src/modules/auth/auth.schema";
+import { redactRequestUrl } from "../../src/middleware/requestLogger";
 
 const app = express();
 app.use(express.json());
@@ -20,8 +21,17 @@ app.get("/unexpected-error", (_req, _res, next) => {
 app.use(errorHandler);
 
 describe("core middleware", () => {
+  it("removes query strings from request log URLs", () => {
+    expect(
+      redactRequestUrl("/auth/verify-email?token=private-token&source=email"),
+    ).toBe("/auth/verify-email");
+    expect(redactRequestUrl("/health")).toBe("/health");
+  });
+
   it("rejects invalid input before route execution", async () => {
-    const response = await request(app).post("/validated").send({ email: "invalid" });
+    const response = await request(app)
+      .post("/validated")
+      .send({ email: "invalid" });
 
     expect(response.status).toBe(400);
     expect(response.body).toEqual({

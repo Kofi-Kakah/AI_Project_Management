@@ -1,6 +1,11 @@
 output "api_url" {
-  description = "Public HTTP endpoint for the API. Configure HTTPS before production use."
-  value       = "http://${aws_lb.app.dns_name}"
+  description = "Public HTTPS endpoint for the API; configure DNS to point app_domain at the load balancer."
+  value       = "https://${var.app_domain}"
+}
+
+output "load_balancer_dns_name" {
+  description = "ALB DNS name; create a DNS alias/CNAME from app_domain to this hostname."
+  value       = aws_lb.app.dns_name
 }
 
 output "ecr_repository_url" {

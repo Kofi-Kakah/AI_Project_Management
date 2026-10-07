@@ -24,7 +24,7 @@ data "aws_availability_zones" "available" {
 locals {
   name               = var.name_prefix
   availability_zones = slice(data.aws_availability_zones.available.names, 0, 2)
-  app_url            = "http://${aws_lb.app.dns_name}"
+  app_url            = "https://${var.app_domain}"
 
   app_secret_values = {
     DATABASE_URL             = "postgresql://app:${random_password.database.result}@${aws_db_instance.database.address}:5432/ai_project_management?schema=public&sslmode=require"
@@ -160,13 +160,21 @@ resource "aws_route_table_association" "private" {
 
 resource "aws_security_group" "load_balancer" {
   name        = "${local.name}-alb"
-  description = "Public HTTP ingress to the application load balancer"
+  description = "Public HTTP redirect and HTTPS ingress to the application load balancer"
   vpc_id      = aws_vpc.app.id
 
   ingress {
-    description = "Temporary HTTP endpoint"
+    description = "Redirect HTTP clients to HTTPS"
     from_port   = 80
     to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  ingress {
+    description = "HTTPS application traffic"
+    from_port   = 443
+    to_port     = 443
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
@@ -385,6 +393,23 @@ resource "aws_lb_listener" "http" {
   protocol          = "HTTP"
 
   default_action {
+    type = "redirect"
+    redirect {
+      port        = "443"
+      protocol    = "HTTPS"
+      status_code = "HTTP_301"
+    }
+  }
+}
+
+resource "aws_lb_listener" "https" {
+  load_balancer_arn = aws_lb.app.arn
+  port              = 443
+  protocol          = "HTTPS"
+  certificate_arn   = var.acm_certificate_arn
+  ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"
+
+  default_action {
     type             = "forward"
     target_group_arn = aws_lb_target_group.app.arn
   }
@@ -537,6 +562,7 @@ resource "aws_ecs_service" "api" {
     aws_iam_role_policy_attachment.execution,
     aws_iam_role_policy.read_runtime_secrets,
     aws_lb_listener.http,
+    aws_lb_listener.https,
   ]
 }
 
