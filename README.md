@@ -621,15 +621,22 @@ follow the staged deployment and teardown guidance in [DEPLOYING.md](DEPLOYING.m
 
 ## Troubleshooting
 
-| Symptom                            | Checks                                                                                                      |
-| ---------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `/health` returns `503`            | Verify `DATABASE_URL`, `REDIS_URL`, service readiness, DNS, TLS options, and security-group/firewall rules. |
-| API exits during startup           | Confirm `DATABASE_URL` is set and `JWT_ACCESS_TOKEN_SECRET` is at least 32 characters.                      |
-| AI endpoints return unavailable    | Configure `GLM_API_KEY`, start the worker, and verify Redis connectivity.                                   |
-| Refresh cookie is not retained     | Use HTTPS in production, allow credentials in the client, and configure exact `CORS_ORIGIN` values.         |
-| Stripe checkout/webhooks fail      | Verify Stripe keys, price IDs, raw webhook delivery to `/billing/webhook`, and the endpoint signing secret. |
-| Tasks or notifications stay queued | Confirm the worker is running and shares the API's Redis and database settings.                             |
-| Prisma cannot connect              | Check the PostgreSQL URL, credentials, TLS requirements, database access policy, and migration status.      |
+| Symptom                                    | Diagnosis and resolution                                                                                                                                                                                                                                                                                                             |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `/health` returns `503`                    | The response identifies `db` and `redis` separately. Check that the service is running and that `DATABASE_URL` / `REDIS_URL` point to reachable endpoints with the required TLS settings and credentials. For local Compose dependencies, start Docker Desktop, then run `docker compose up -d postgres redis`.                      |
+| API exits during startup                   | Check the startup error first. `DATABASE_URL` must be set, and `JWT_ACCESS_TOKEN_SECRET` must contain at least 32 characters. Confirm the configured port is available and that required environment values are valid; never paste secrets into logs or issue reports.                                                               |
+| AI request is unavailable or stays queued  | Confirm `GLM_API_KEY` is set, `GLM_MODEL` names an available Gemini model, Redis is healthy, and the worker is running with the same `DATABASE_URL` and `REDIS_URL` as the API. A queued request is processed asynchronously; inspect worker logs for provider, authentication, quota, or network errors.                            |
+| Refresh cookie is not retained             | Use HTTPS in production, set `CORS_ORIGIN` to the exact browser origin (scheme and host), and make credentialed requests (`credentials: "include"` with `fetch`, or `withCredentials: true` with Axios). The browser must allow cookies for the API origin. Check `Set-Cookie` in the login response and browser cookie diagnostics. |
+| Stripe checkout or webhooks fail           | For checkout, configure `STRIPE_SECRET_KEY` and the matching plan Price ID (`STRIPE_PRICE_PRO` or `STRIPE_PRICE_PREMIUM`). For webhooks, set `STRIPE_WEBHOOK_SECRET` to the endpoint's signing secret and deliver the unmodified JSON body to `POST /billing/webhook`; invalid signatures are rejected with `400`.                   |
+| Tasks, email, or notifications stay queued | Confirm the worker is running and shares the API's database and Redis URLs. Check worker logs for repeated job failures; email additionally requires `EMAIL_HOST` and `EMAIL_FROM` (and both SMTP username and password if authentication is used). In development without SMTP, email is logged as not delivered and is not sent.   |
+| Prisma cannot connect or queries fail      | Verify the PostgreSQL hostname, port, database name, credentials, TLS requirements, and network allowlist/security group. Run `npx prisma migrate status` to check schema drift; apply reviewed pending migrations with `npx prisma migrate deploy` during a controlled release.                                                     |
+| CORS preflight fails                       | Set `CORS_ORIGIN` to the exact frontend origin, without a trailing path. For multiple trusted browser origins, separate origins with commas. CORS is not a substitute for authentication or authorization.                                                                                                                           |
+
+For local development, start PostgreSQL and Redis with Docker Compose before
+starting the API. Run `npm run dev` and `npm run worker` in separate terminals;
+the API health endpoint checks PostgreSQL and Redis, but it does not confirm
+that the worker is running or that external services such as Gemini, SMTP, and
+Stripe are accepting requests. The Docker daemon must be available for Compose.
 
 ## Contributing
 
