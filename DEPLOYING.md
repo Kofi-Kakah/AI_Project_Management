@@ -29,7 +29,9 @@ check at `/health`. The worker shares the API image but runs
 for the API and worker, an internet-facing HTTP Application Load Balancer, and
 private RDS PostgreSQL and ElastiCache Redis resources. Database and Redis
 credentials are generated and kept in Secrets Manager; application secrets
-are supplied through the sensitive `runtime_secrets` Terraform variable.
+are supplied through the sensitive `runtime_secrets` Terraform variable. Set
+`runtime_secrets.glm_api_key` to enable Gemini task summaries and subtask
+generation; the ECS API and worker use `GLM_MODEL=gemini-2.5-flash`.
 
 This configuration intentionally uses HTTP because no custom domain or ACM
 certificate was provided. Do not use the public endpoint for production until

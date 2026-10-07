@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AiRequestStatus, UsageMetric } from "../../generated/prisma/enums";
 
-const { delegates, tx, anthropicCreate } = vi.hoisted(() => {
+const { delegates, tx, generateContent } = vi.hoisted(() => {
   const delegates = {
     task: { findUnique: vi.fn() },
     aiRequest: { update: vi.fn() },
@@ -10,7 +10,7 @@ const { delegates, tx, anthropicCreate } = vi.hoisted(() => {
     aiRequest: { update: vi.fn() },
     usageRecord: { create: vi.fn() },
   };
-  return { delegates, tx, anthropicCreate: vi.fn() };
+  return { delegates, tx, generateContent: vi.fn() };
 });
 
 vi.mock("../../src/config/db", () => ({
@@ -21,8 +21,10 @@ vi.mock("../../src/config/db", () => ({
     ),
   },
 }));
-vi.mock("../../src/config/anthropic", () => ({
-  getAnthropicClient: () => ({ messages: { create: anthropicCreate } }),
+vi.mock("../../src/config/google", () => ({
+  getGoogleGenAIClient: () => ({
+    models: { generateContent },
+  }),
 }));
 vi.mock("../../src/jobs/queues", () => ({
   enqueueNotification: vi.fn(),
@@ -30,7 +32,7 @@ vi.mock("../../src/jobs/queues", () => ({
 }));
 vi.mock("../../src/utils/mailer", () => ({ deliverEmail: vi.fn() }));
 vi.stubEnv("DATABASE_URL", "postgresql://localhost:5432/test");
-vi.stubEnv("ANTHROPIC_MODEL", "claude-test");
+vi.stubEnv("GLM_MODEL", "gemini-test");
 
 const { processAiRequest } = await import("../../src/jobs/workers/processors");
 
@@ -49,9 +51,9 @@ describe("AI background processor", () => {
     delegates.aiRequest.update.mockResolvedValue({});
     tx.aiRequest.update.mockResolvedValue({});
     tx.usageRecord.create.mockResolvedValue({});
-    anthropicCreate.mockResolvedValue({
-      content: [{ type: "text", text: "A concise task summary." }],
-      usage: { input_tokens: 100, output_tokens: 20 },
+    generateContent.mockResolvedValue({
+      text: "A concise task summary.",
+      usageMetadata: { promptTokenCount: 100, candidatesTokenCount: 20 },
     });
   });
 
@@ -70,14 +72,10 @@ describe("AI background processor", () => {
         data: { status: AiRequestStatus.PROCESSING },
       }),
     );
-    expect(anthropicCreate).toHaveBeenCalledWith(
+    expect(generateContent).toHaveBeenCalledWith(
       expect.objectContaining({
-        model: "claude-test",
-        messages: [
-          expect.objectContaining({
-            content: expect.stringContaining("Prepare release"),
-          }),
-        ],
+        model: "gemini-test",
+        contents: expect.stringContaining("Prepare release"),
       }),
     );
     expect(tx.aiRequest.update).toHaveBeenCalledWith(
@@ -103,14 +101,9 @@ describe("AI background processor", () => {
   });
 
   it("validates generated subtasks before storing the result", async () => {
-    anthropicCreate.mockResolvedValueOnce({
-      content: [
-        {
-          type: "text",
-          text: '[{"title":"Review deployment","description":"Check production readiness."}]',
-        },
-      ],
-      usage: { input_tokens: 90, output_tokens: 15 },
+    generateContent.mockResolvedValueOnce({
+      text: '[{"title":"Review deployment","description":"Check production readiness."}]',
+      usageMetadata: { promptTokenCount: 90, candidatesTokenCount: 15 },
     });
 
     await processAiRequest({

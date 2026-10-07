@@ -24,7 +24,7 @@ function effectivePlan(
 }
 
 async function createRequest(data: Omit<AiJobData, "requestId">) {
-  if (!env.ANTHROPIC_API_KEY) {
+  if (!env.GLM_API_KEY) {
     throw new AppError("AI service is not configured", 503, "AI_UNAVAILABLE");
   }
 
@@ -69,7 +69,7 @@ async function createRequest(data: Omit<AiJobData, "requestId">) {
           organizationId: data.organizationId,
           userId: data.userId,
           feature: data.feature,
-          model: env.ANTHROPIC_MODEL,
+          model: env.GLM_MODEL,
           status: AiRequestStatus.QUEUED,
           succeeded: false,
         },

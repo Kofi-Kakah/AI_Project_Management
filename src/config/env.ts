@@ -2,7 +2,9 @@ import "dotenv/config";
 import { z } from "zod";
 
 const envSchema = z.object({
-  NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
+  NODE_ENV: z
+    .enum(["development", "test", "production"])
+    .default("development"),
   PORT: z.coerce.number().int().positive().default(4000),
   APP_URL: z.string().url().default("http://localhost:4000"),
   FRONTEND_URL: z.string().url().default("http://localhost:3000"),
@@ -19,7 +21,10 @@ const envSchema = z.object({
 
   GOOGLE_CLIENT_ID: z.string().optional(),
   GOOGLE_CLIENT_SECRET: z.string().optional(),
-  GOOGLE_CALLBACK_URI: z.string().url().default("http://localhost:4000/auth/google/callback"),
+  GOOGLE_CALLBACK_URI: z
+    .string()
+    .url()
+    .default("http://localhost:4000/auth/google/callback"),
 
   EMAIL_HOST: z.string().optional(),
   EMAIL_PORT: z.coerce.number().int().positive().default(587),
@@ -33,18 +38,20 @@ const envSchema = z.object({
   STRIPE_PRICE_PREMIUM: z.string().optional(),
 
   SENTRY_DSN: z.string().optional(),
-  ANTHROPIC_API_KEY: z.string().optional(),
-  ANTHROPIC_MODEL: z.string().default("claude-haiku-4-5-20251001"),
-  GEMINI_API_KEY: z.string().optional(),
-  GEMINI_BASE_URL: z.string().url().optional(),
-  GEMINI_MODEL: z.string().default("gemini-2.5-flash"),
-  LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"]).default("debug"),
+  GLM_API_KEY: z.string().optional(),
+  GLM_MODEL: z.string().default("gemini-2.5-flash"),
+  LOG_LEVEL: z
+    .enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"])
+    .default("debug"),
 });
 
 const parsedEnv = envSchema.safeParse(process.env);
 
 if (!parsedEnv.success) {
-  console.error("Invalid environment configuration:", z.treeifyError(parsedEnv.error));
+  console.error(
+    "Invalid environment configuration:",
+    z.treeifyError(parsedEnv.error),
+  );
   throw new Error("Invalid environment configuration");
 }
 

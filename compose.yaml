@@ -42,11 +42,8 @@ services:
       STRIPE_PRICE_PRO: ${STRIPE_PRICE_PRO:-}
       STRIPE_PRICE_PREMIUM: ${STRIPE_PRICE_PREMIUM:-}
       SENTRY_DSN: ${SENTRY_DSN:-}
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
-      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-haiku-4-5-20251001}
-      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
-      GEMINI_BASE_URL: ${GEMINI_BASE_URL:-https://generativelanguage.googleapis.com/v1beta/models}
-      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
+      GLM_API_KEY: ${GLM_API_KEY:-}
+      GLM_MODEL: ${GLM_MODEL:-gemini-2.5-flash}
       LOG_LEVEL: ${LOG_LEVEL:-info}
     ports:
       - "${PORT:-4000}:4000"
@@ -87,8 +84,8 @@ services:
       EMAIL_USERNAME: ${EMAIL_USERNAME:-}
       EMAIL_PASSWORD: ${EMAIL_PASSWORD:-}
       EMAIL_FROM: ${EMAIL_FROM:-}
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
-      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-haiku-4-5-20251001}
+      GLM_API_KEY: ${GLM_API_KEY:-}
+      GLM_MODEL: ${GLM_MODEL:-gemini-2.5-flash}
       LOG_LEVEL: ${LOG_LEVEL:-info}
     healthcheck:
       disable: true

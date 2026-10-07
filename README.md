@@ -14,6 +14,7 @@ Built with **Node.js**, **TypeScript**, **Express 5**, **PostgreSQL**, and **Pri
 [![Docker](https://img.shields.io/badge/Docker-containerized-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
 [![AWS](https://img.shields.io/badge/AWS-deployment-232F3E?logo=amazonwebservices&logoColor=white)](https://aws.amazon.com/)
 [![Stripe](https://img.shields.io/badge/Stripe-billing-635BFF?logo=stripe&logoColor=white)](https://stripe.com/)
+[![Gemini](https://img.shields.io/badge/Google%20Gemini-AI-8E75B2?logo=googlegemini&logoColor=white)](https://ai.google.dev/)
 [![Redis](https://img.shields.io/badge/Redis-queue%20%26%20cache-DC382D?logo=redis&logoColor=white)](https://redis.io/)
 [![BullMQ](https://img.shields.io/badge/BullMQ-background%20jobs-CB3837)](https://bullmq.io/)
 [![Nodemailer](https://img.shields.io/badge/Nodemailer-email-22A7F0)](https://nodemailer.com/)
@@ -57,7 +58,7 @@ Built with **Node.js**, **TypeScript**, **Express 5**, **PostgreSQL**, and **Pri
 - **Authentication** using email/password, signed short-lived access tokens, rotating opaque refresh tokens in an HTTP-only cookie, email verification and password-reset flows, and optional Google OAuth.
 - **Real-time collaboration** through Socket.IO, with organization/project rooms and Redis-backed fan-out.
 - **Subscriptions and usage limits** for Free, Pro, and Premium plans using Stripe checkout, billing portal, signed webhooks, and recorded usage.
-- **Asynchronous AI task assistance** for task summaries and subtask suggestions, processed by a BullMQ worker using Anthropic.
+- **Asynchronous AI task assistance** for task summaries and subtask suggestions, processed by a BullMQ worker using Google Gemini.
 - **Platform administration** with `/admin/stats`, protected by the platform-admin user flag.
 - **Operational endpoints** for dependency health (`/health`) and Prometheus metrics (`/metrics`).
 - **Container support** with a multi-stage image shared by the API and worker.
@@ -74,7 +75,7 @@ Built with **Node.js**, **TypeScript**, **Express 5**, **PostgreSQL**, and **Pri
 | Real-time              | Socket.IO and `@socket.io/redis-adapter`                                                 |
 | Authentication         | JWT access tokens, opaque refresh tokens, Argon2 password hashing, Passport Google OAuth |
 | Payments               | Stripe                                                                                   |
-| AI provider            | Anthropic SDK                                                                            |
+| AI provider            | Google Gemini via `@google/genai`                                                        |
 | Validation             | Zod                                                                                      |
 | Metrics                | `prom-client`                                                                            |
 | Logging                | Pino and `pino-http`                                                                     |
@@ -106,7 +107,7 @@ Built with **Node.js**, **TypeScript**, **Express 5**, **PostgreSQL**, and **Pri
                                       └──────────┬───────────┘
                                                  │
                                       ┌──────────▼───────────┐
-                                      │ Anthropic / email    │
+                                      │ Gemini / email       │
                                       └──────────────────────┘
 ```
 
@@ -139,7 +140,7 @@ records stay within their tenant.
 ├── src/
 │   ├── app.ts                   # Express middleware, health, metrics, routes
 │   ├── server.ts                # HTTP server, Socket.IO, graceful shutdown
-│   ├── config/                  # Environment, Prisma, Redis, Stripe, Anthropic
+│   ├── config/                  # Environment, Prisma, Redis, Stripe, Google Gen AI
 │   ├── jobs/                    # BullMQ queues and worker processors
 │   ├── metrics/                 # Prometheus registry and HTTP metrics
 │   ├── middleware/              # Auth, validation, RBAC, quotas, rate limits
@@ -262,11 +263,8 @@ unset, not that the corresponding integration will work without it.
 | `STRIPE_WEBHOOK_SECRET`        |                 No | Stripe signing secret used to verify `/billing/webhook`.                                                                              |
 | `STRIPE_PRICE_PRO`             |                 No | Stripe Price ID mapped to the Pro plan.                                                                                               |
 | `STRIPE_PRICE_PREMIUM`         |                 No | Stripe Price ID mapped to the Premium plan.                                                                                           |
-| `ANTHROPIC_API_KEY`            |                 No | Enables queued AI task summaries and subtask generation.                                                                              |
-| `ANTHROPIC_MODEL`              |                 No | Anthropic model; defaults to `claude-haiku-4-5-20251001`.                                                                             |
-| `GEMINI_API_KEY`               |                 No | Present in configuration but not currently used by the AI feature implementation.                                                     |
-| `GEMINI_BASE_URL`              |                 No | Present in configuration but not currently used by the AI feature implementation.                                                     |
-| `GEMINI_MODEL`                 |                 No | Present in configuration but not currently used by the AI feature implementation.                                                     |
+| `GLM_API_KEY`                  |    Required for AI | Google Gemini API key; enables queued task summaries and subtask generation.                                                          |
+| `GLM_MODEL`                    |                 No | Gemini model; defaults to `gemini-2.5-flash`.                                                                                         |
 | `SENTRY_DSN`                   |                 No | Sentry DSN configuration.                                                                                                             |
 | `LOG_LEVEL`                    |                 No | Pino log level; defaults to `debug` in the application schema.                                                                        |
 
@@ -459,12 +457,32 @@ complete.
 AI summary and subtask requests are queued rather than run in the HTTP request
 path. The API responds with `202 Accepted` and an AI request record; poll
 `GET /organizations/:organizationId/ai/requests/:requestId` for its status and
-result. The worker consumes BullMQ jobs from Redis and calls Anthropic using
-`ANTHROPIC_API_KEY` and `ANTHROPIC_MODEL`.
+result. The worker consumes BullMQ jobs from Redis and calls Gemini through
+Google's `@google/genai` SDK using `GLM_API_KEY` and `GLM_MODEL`.
 
-The request state is `QUEUED`, `PROCESSING`, `SUCCEEDED`, or `FAILED`. AI usage
-is checked against the organization's plan and tracked alongside token/cost
-metadata. The Free plan has no AI request allowance.
+### Configure Gemini
+
+Create a Gemini API key in [Google AI Studio](https://aistudio.google.com/app/apikey),
+then set these variables in `.env` (or your deployment's secret manager):
+
+```dotenv
+GLM_API_KEY=your-google-gemini-api-key
+GLM_MODEL=gemini-2.5-flash
+```
+
+`GLM_API_KEY` is this application's environment-variable name for the Google
+Gemini API key; it is not a separate GLM provider credential. `GLM_MODEL` is
+optional when using the default shown. Keep the key private: do not commit it,
+put it in source control, or include a real key in issue reports. Both the API
+and the BullMQ worker need the same key and model configuration. The supplied
+Compose files pass these variables to the relevant processes; for AWS ECS, set
+`runtime_secrets.glm_api_key` in the sensitive Terraform variables and the
+task definitions use `GLM_MODEL=gemini-2.5-flash`.
+
+AI generation remains unavailable when `GLM_API_KEY` is unset. The request
+state is `QUEUED`, `PROCESSING`, `SUCCEEDED`, or `FAILED`. AI usage is checked
+against the organization's plan and recorded alongside token/cost metadata.
+The Free plan has no AI request allowance.
 
 ## Health, Metrics, and Logging
 
@@ -579,7 +597,7 @@ follow the staged deployment and teardown guidance in [DEPLOYING.md](DEPLOYING.m
 | ---------------------------------- | ----------------------------------------------------------------------------------------------------------- |
 | `/health` returns `503`            | Verify `DATABASE_URL`, `REDIS_URL`, service readiness, DNS, TLS options, and security-group/firewall rules. |
 | API exits during startup           | Confirm `DATABASE_URL` is set and `JWT_ACCESS_TOKEN_SECRET` is at least 32 characters.                      |
-| AI endpoints return unavailable    | Configure `ANTHROPIC_API_KEY`, start the worker, and verify Redis connectivity.                             |
+| AI endpoints return unavailable    | Configure `GLM_API_KEY`, start the worker, and verify Redis connectivity.                                   |
 | Refresh cookie is not retained     | Use HTTPS in production, allow credentials in the client, and configure exact `CORS_ORIGIN` values.         |
 | Stripe checkout/webhooks fail      | Verify Stripe keys, price IDs, raw webhook delivery to `/billing/webhook`, and the endpoint signing secret. |
 | Tasks or notifications stay queued | Confirm the worker is running and shares the API's Redis and database settings.                             |

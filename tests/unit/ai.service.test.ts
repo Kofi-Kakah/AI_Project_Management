@@ -34,8 +34,8 @@ vi.mock("../../src/config/db", () => ({
 }));
 vi.mock("../../src/jobs/queues", () => ({ enqueueAiJob }));
 vi.stubEnv("DATABASE_URL", "postgresql://localhost:5432/test");
-vi.stubEnv("ANTHROPIC_API_KEY", "test-api-key");
-vi.stubEnv("ANTHROPIC_MODEL", "claude-test");
+vi.stubEnv("GLM_API_KEY", "test-api-key");
+vi.stubEnv("GLM_MODEL", "gemini-test");
 
 const { getAiRequest, queueSubtaskGeneration, queueTaskSummary } =
   await import("../../src/modules/ai/ai.service");
@@ -88,7 +88,7 @@ describe("AI request service", () => {
           organizationId: "org-a",
           userId: "user-a",
           feature: "subtask-generation",
-          model: "claude-test",
+          model: "gemini-test",
           succeeded: false,
         }),
       }),

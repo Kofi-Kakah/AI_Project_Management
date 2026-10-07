@@ -48,8 +48,7 @@ variable "runtime_secrets" {
     stripe_price_pro         = optional(string, "")
     stripe_price_premium     = optional(string, "")
     sentry_dsn               = optional(string, "")
-    anthropic_api_key        = optional(string, "")
-    gemini_api_key           = optional(string, "")
+    glm_api_key              = optional(string, "")
   })
   sensitive = true
 

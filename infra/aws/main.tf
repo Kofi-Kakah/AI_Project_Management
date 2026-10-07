@@ -43,9 +43,7 @@ locals {
     STRIPE_PRICE_PRO         = var.runtime_secrets.stripe_price_pro
     STRIPE_PRICE_PREMIUM     = var.runtime_secrets.stripe_price_premium
     SENTRY_DSN               = var.runtime_secrets.sentry_dsn
-    ANTHROPIC_API_KEY        = var.runtime_secrets.anthropic_api_key
-    GEMINI_API_KEY           = var.runtime_secrets.gemini_api_key
-    GEMINI_BASE_URL          = "https://generativelanguage.googleapis.com/v1beta/models"
+    GLM_API_KEY              = var.runtime_secrets.glm_api_key
   }
 
   api_secrets = [
@@ -65,9 +63,7 @@ locals {
     "STRIPE_PRICE_PRO",
     "STRIPE_PRICE_PREMIUM",
     "SENTRY_DSN",
-    "ANTHROPIC_API_KEY",
-    "GEMINI_API_KEY",
-    "GEMINI_BASE_URL",
+    "GLM_API_KEY",
   ]
 
   worker_secrets = [
@@ -77,7 +73,7 @@ locals {
     "EMAIL_USERNAME",
     "EMAIL_PASSWORD",
     "EMAIL_FROM",
-    "ANTHROPIC_API_KEY",
+    "GLM_API_KEY",
   ]
 }
 
@@ -423,8 +419,7 @@ resource "aws_ecs_task_definition" "api" {
       { name = "EMAIL_PORT", value = "587" },
       { name = "JWT_ACCESS_TOKEN_EXPIRATION", value = "15m" },
       { name = "JWT_REFRESH_TOKEN_EXPIRATION", value = "7d" },
-      { name = "ANTHROPIC_MODEL", value = "claude-haiku-4-5-20251001" },
-      { name = "GEMINI_MODEL", value = "gemini-2.5-flash" },
+      { name = "GLM_MODEL", value = "gemini-2.5-flash" },
       { name = "LOG_LEVEL", value = "info" },
     ]
     secrets = [
@@ -464,7 +459,7 @@ resource "aws_ecs_task_definition" "worker" {
       { name = "APP_URL", value = local.app_url },
       { name = "FRONTEND_URL", value = var.frontend_url },
       { name = "EMAIL_PORT", value = "587" },
-      { name = "ANTHROPIC_MODEL", value = "claude-haiku-4-5-20251001" },
+      { name = "GLM_MODEL", value = "gemini-2.5-flash" },
       { name = "LOG_LEVEL", value = "info" },
     ]
     secrets = [

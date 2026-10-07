@@ -7,7 +7,7 @@ runtime_secrets = {
   jwt_access_token_secret  = "replace-with-a-random-secret-at-least-32-chars"
   jwt_refresh_token_secret = "replace-with-a-different-random-secret-32-chars"
   cookie_secret            = "replace-with-another-random-secret-32-chars"
-  anthropic_api_key        = ""
+  glm_api_key              = ""
 }
 
 # Keep false for the initial infrastructure apply. Set true only after pushing
