@@ -6,6 +6,11 @@ import { env } from "./config/env";
 import { prisma } from "./config/db";
 import { redis } from "./config/redis";
 import { errorHandler } from "./middleware/errorHandler";
+import {
+  collectHttpMetrics,
+  metricsContentType,
+  renderMetrics,
+} from "./metrics/metrics";
 import { apiRateLimit, authRateLimit } from "./middleware/rateLimit";
 import { requestLogger } from "./middleware/requestLogger";
 import {
@@ -35,7 +40,15 @@ app.use(
   }),
 );
 app.use(requestLogger);
+app.use(collectHttpMetrics);
 app.use(apiRateLimit);
+app.get("/metrics", async (_req, res, next) => {
+  try {
+    res.type(metricsContentType()).send(await renderMetrics());
+  } catch (error) {
+    next(error);
+  }
+});
 app.post(
   "/billing/webhook",
   express.raw({ type: "application/json", limit: "1mb" }),

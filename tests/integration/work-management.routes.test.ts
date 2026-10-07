@@ -490,6 +490,26 @@ describe("teams, projects, tasks, and comments routes", () => {
     );
   });
 
+  it("returns 404 when an organization requests another organization's task", async () => {
+    delegates.task.findUnique.mockResolvedValue(null);
+
+    const response = await request(app)
+      .get("/organizations/org-a/tasks/task-from-org-b")
+      .set("Authorization", "Bearer owner-a");
+
+    expect(response.status).toBe(404);
+    expect(delegates.task.findUnique).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          id_organizationId: {
+            id: "task-from-org-b",
+            organizationId: "org-a",
+          },
+        },
+      }),
+    );
+  });
+
   it("rejects task-parent updates that would create a hierarchy cycle", async () => {
     delegates.task.findUnique
       .mockResolvedValueOnce({

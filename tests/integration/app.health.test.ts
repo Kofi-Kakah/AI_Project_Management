@@ -18,7 +18,10 @@ callRedis.mockImplementation((command: string) =>
   Promise.resolve(command === "SCRIPT" ? "test-script-sha" : [0, 60_000]),
 );
 vi.stubEnv("DATABASE_URL", "postgresql://test:test@localhost:5432/test");
-vi.stubEnv("JWT_ACCESS_TOKEN_SECRET", "test-secret-that-is-long-enough-for-jwt");
+vi.stubEnv(
+  "JWT_ACCESS_TOKEN_SECRET",
+  "test-secret-that-is-long-enough-for-jwt",
+);
 vi.stubEnv("GOOGLE_CLIENT_ID", "");
 vi.stubEnv("GOOGLE_CLIENT_SECRET", "");
 
@@ -34,7 +37,11 @@ describe("application health endpoint", () => {
     const response = await request(app).get("/health");
 
     expect(response.status).toBe(200);
-    expect(response.body).toEqual({ status: "ok", db: "connected", redis: "connected" });
+    expect(response.body).toEqual({
+      status: "ok",
+      db: "connected",
+      redis: "connected",
+    });
   });
 
   it("reports unavailable dependencies with a service-unavailable status", async () => {
@@ -43,6 +50,24 @@ describe("application health endpoint", () => {
     const response = await request(app).get("/health");
 
     expect(response.status).toBe(503);
-    expect(response.body).toEqual({ status: "error", db: "connected", redis: "unreachable" });
+    expect(response.body).toEqual({
+      status: "error",
+      db: "connected",
+      redis: "unreachable",
+    });
+  });
+
+  it("exposes Prometheus metrics without instrumenting the scrape itself", async () => {
+    await request(app).get("/health");
+
+    const response = await request(app).get("/metrics");
+
+    expect(response.status).toBe(200);
+    expect(response.headers["content-type"]).toContain("text/plain");
+    expect(response.text).toContain("# HELP http_requests_total");
+    expect(response.text).toContain(
+      'http_requests_total{method="GET",route="/health",status_code="200"}',
+    );
+    expect(response.text).not.toContain('route="/metrics"');
   });
 });

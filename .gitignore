@@ -5,3 +5,8 @@ coverage
 .env
 
 /generated/prisma
+/infra/aws/.terraform/
+/infra/aws/*.tfstate
+/infra/aws/*.tfstate.*
+/infra/aws/*.tfplan
+/infra/aws/terraform.tfvars
