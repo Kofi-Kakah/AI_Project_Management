@@ -14,6 +14,8 @@ import {
 } from "./modules/billing/billing.routes";
 import { stripeWebhook } from "./modules/billing/billing.controller";
 import { authRouter } from "./modules/auth/auth.routes";
+import { adminRouter } from "./modules/admin/admin.routes";
+import { aiRouter } from "./modules/ai/ai.routes";
 import {
   commentsRouter,
   taskCommentsRouter,
@@ -65,6 +67,8 @@ app.get("/health", async (_req, res) => {
 app.use("/auth", authRateLimit, authRouter);
 app.use("/billing", billingRouter);
 app.use("/organizations", organizationsRouter);
+app.use("/organizations/:organizationId/ai", aiRouter);
+app.use("/admin", adminRouter);
 app.use("/organizations/:organizationId/billing", organizationBillingRouter);
 app.use("/organizations/:organizationId/teams", teamsRouter);
 app.use("/organizations/:organizationId/projects", projectsRouter);

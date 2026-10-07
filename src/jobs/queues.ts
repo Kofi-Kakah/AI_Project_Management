@@ -24,10 +24,20 @@ export type NotificationJobData = {
   resourceId?: string;
 };
 
+export type AiJobData = {
+  requestId: string;
+  organizationId: string;
+  userId: string;
+  taskId: string;
+  feature: "task-summary" | "subtask-generation";
+  subtaskCount?: number;
+};
+
 export const QUEUE_NAMES = {
   email: "email",
   notifications: "notifications",
   deadlines: "deadlines",
+  ai: "ai",
 } as const;
 
 const defaultJobOptions: JobsOptions = {
@@ -43,6 +53,7 @@ let queues:
       email: Queue<EmailJobData>;
       notifications: Queue<NotificationJobData>;
       deadlines: Queue;
+      ai: Queue<AiJobData>;
     }
   | undefined;
 
@@ -59,6 +70,10 @@ export function getQueues() {
         defaultJobOptions,
       }),
       deadlines: new Queue(QUEUE_NAMES.deadlines, {
+        connection: queueConnection,
+        defaultJobOptions,
+      }),
+      ai: new Queue<AiJobData>(QUEUE_NAMES.ai, {
         connection: queueConnection,
         defaultJobOptions,
       }),
@@ -79,6 +94,10 @@ export async function enqueueNotification(
   await getQueues().notifications.add("persist-notification", data, options);
 }
 
+export async function enqueueAiJob(data: AiJobData): Promise<void> {
+  await getQueues().ai.add(data.feature, data, { jobId: data.requestId });
+}
+
 export async function closeQueues(): Promise<void> {
   if (!queues) return;
   const activeQueues = queues;
@@ -87,6 +106,7 @@ export async function closeQueues(): Promise<void> {
     activeQueues.email.close(),
     activeQueues.notifications.close(),
     activeQueues.deadlines.close(),
+    activeQueues.ai.close(),
   ]);
   await queueConnection?.quit();
   queueConnection = undefined;

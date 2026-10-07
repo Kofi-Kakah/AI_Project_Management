@@ -7,6 +7,7 @@ import { logger } from "../utils/logger";
 import { closeQueues, QUEUE_NAMES } from "./queues";
 import {
   processEmail,
+  processAiRequest,
   processNotification,
   queueUpcomingDeadlineNotifications,
   scheduleDeadlineScan,
@@ -34,8 +35,22 @@ const deadlineWorker = new Worker(
   },
   { connection: workerConnection.duplicate() },
 );
+const aiWorker = new Worker(
+  QUEUE_NAMES.ai,
+  (job) =>
+    processAiRequest(
+      job.data,
+      job.attemptsMade + 1 >= (job.opts.attempts ?? 1),
+    ),
+  { connection: workerConnection.duplicate() },
+);
 
-for (const worker of [emailWorker, notificationWorker, deadlineWorker]) {
+for (const worker of [
+  emailWorker,
+  notificationWorker,
+  deadlineWorker,
+  aiWorker,
+]) {
   worker.on("failed", (job, error) => {
     logger.error(
       { jobId: job?.id, queue: worker.name, error },
@@ -57,6 +72,7 @@ async function shutdown(signal: string, exitCode = 0): Promise<void> {
       emailWorker.close(),
       notificationWorker.close(),
       deadlineWorker.close(),
+      aiWorker.close(),
     ]);
     await Promise.all([
       closeQueues(),

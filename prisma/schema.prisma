@@ -72,6 +72,13 @@ enum UsageMetric {
   STORAGE_BYTE
 }
 
+enum AiRequestStatus {
+  QUEUED
+  PROCESSING
+  SUCCEEDED
+  FAILED
+}
+
 model User {
   id                    String         @id @default(cuid())
   email                 String         @unique @db.VarChar(320)
@@ -363,6 +370,9 @@ model AiRequest {
   estimatedCostUsd     Decimal? @map("estimated_cost_usd") @db.Decimal(12, 8)
   durationMs           Int?     @map("duration_ms")
   succeeded            Boolean  @default(true)
+  status               AiRequestStatus @default(QUEUED)
+  result               Json?
+  error                String?  @db.Text
   createdAt            DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)

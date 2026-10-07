@@ -1,0 +1,9 @@
+CREATE TYPE "AiRequestStatus" AS ENUM ('QUEUED', 'PROCESSING', 'SUCCEEDED', 'FAILED');
+
+ALTER TABLE "ai_requests"
+ADD COLUMN "status" "AiRequestStatus" NOT NULL DEFAULT 'SUCCEEDED',
+ADD COLUMN "result" JSONB,
+ADD COLUMN "error" TEXT;
+
+ALTER TABLE "ai_requests"
+ALTER COLUMN "status" SET DEFAULT 'QUEUED';

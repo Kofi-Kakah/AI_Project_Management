@@ -33,6 +33,8 @@ const envSchema = z.object({
   STRIPE_PRICE_PREMIUM: z.string().optional(),
 
   SENTRY_DSN: z.string().optional(),
+  ANTHROPIC_API_KEY: z.string().optional(),
+  ANTHROPIC_MODEL: z.string().default("claude-haiku-4-5-20251001"),
   GEMINI_API_KEY: z.string().optional(),
   GEMINI_BASE_URL: z.string().url().optional(),
   GEMINI_MODEL: z.string().default("gemini-2.5-flash"),

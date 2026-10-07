@@ -8,18 +8,21 @@ export const PLAN_CATALOG = {
     name: "Free",
     monthlyProjectLimit: 3,
     monthlyTaskLimit: 500,
+    monthlyAiRequestLimit: 0,
     stripePriceConfigured: false,
   },
   PRO: {
     name: "Pro",
     monthlyProjectLimit: 20,
     monthlyTaskLimit: 5_000,
+    monthlyAiRequestLimit: 500,
     stripePriceConfigured: Boolean(env.STRIPE_PRICE_PRO),
   },
   PREMIUM: {
     name: "Premium",
     monthlyProjectLimit: null,
     monthlyTaskLimit: null,
+    monthlyAiRequestLimit: null,
     stripePriceConfigured: Boolean(env.STRIPE_PRICE_PREMIUM),
   },
 } as const;
