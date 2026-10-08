@@ -2,11 +2,12 @@
   "name": "ai_project_management",
   "version": "1.0.0",
   "description": "",
-  "main": "server.js",
+  "main": "server.ts",
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "worker": "tsx src/jobs/worker.ts",
     "build": "tsc",
+    "postinstall": "prisma generate",
     "start": "node dist/src/server.js",
     "lint": "eslint . --ext .ts",
     "format": "prettier --write .",
